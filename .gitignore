@@ -1,0 +1,17 @@
+# Security (CRITICAL)
+.streamlit/secrets.toml
+.env
+*.pem
+*.key
+
+# System & Build
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Data & Backups
+backups/
+*.sql
+*.tar.gz
+src/__pycache__/

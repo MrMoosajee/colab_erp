@@ -1,0 +1,13 @@
+[Unit]
+Description=Colab ERP Streamlit Service
+After=network.target
+
+[Service]
+User=colabtechsolutions
+WorkingDirectory=/home/colabtechsolutions/colab_erp
+Environment=PYTHONPATH=/home/colabtechsolutions/colab_erp
+ExecStart=/home/colabtechsolutions/venv/bin/streamlit run src/app.py --server.port 8501 --server.headless true
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
