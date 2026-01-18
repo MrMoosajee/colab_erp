@@ -4,14 +4,23 @@
 *.pem
 *.key
 
-# System & Build
+# Python / Environment
 venv/
 __pycache__/
 *.pyc
-.DS_Store
+*.pyo
 
-# Data & Backups
-backups/
-*.sql
-*.tar.gz
-src/__pycache__/
+# IDE / JetBrains (Keep repo clean)
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS Junk
+.DS_Store
+Thumbs.db
+
+# Logs & Databases
+*.log
+*.sqlite3
+*.db

@@ -1,120 +1,177 @@
-import psycopg2
 import streamlit as st
+import psycopg2
+from psycopg2 import pool
+import pandas as pd
 from datetime import datetime, time
+import pytz
+from contextlib import contextmanager
 
-# -----------------------------
-# Database Connection
-# -----------------------------
-def get_connection():
+# ----------------------------------------------------------------------------
+# 1. INFRASTRUCTURE: THREAD-SAFE CONNECTION POOLING
+# ----------------------------------------------------------------------------
+
+@st.cache_resource
+def get_db_pool():
+    """
+    Creates a ThreadedConnectionPool.
+    Cached once per process. Safe for concurrent Streamlit users.
+    Configured for UTC to prevent Timezone Drift.
+    """
     try:
-        # Connects using the [postgres] section in your secrets.toml
-        return psycopg2.connect(
+        return psycopg2.pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=20, # SRE NOTE: Fits within postgresql.conf limits (100)
             host=st.secrets["postgres"]["host"],
             port=st.secrets["postgres"]["port"],
-            dbname=st.secrets["postgres"]["dbname"],
+            database=st.secrets["postgres"]["dbname"],
             user=st.secrets["postgres"]["user"],
-            password=st.secrets["postgres"]["password"]
+            password=st.secrets["postgres"]["password"],
+            options="-c timezone=UTC" # CRITICAL: Enforces v2.1 Timezone Standard
         )
     except Exception as e:
-        st.error(f"Database connection failed: {e}")
-        return None
+        # Fatal error if DB is unreachable
+        raise ConnectionError(f"❌ Critical: DB Pool Creation Failed: {e}")
 
-# -----------------------------
-# Date Utilities
-# -----------------------------
-def normalize_dates(date_start, date_end):
-    """Converts Date objects to Datetime (Start of day / End of day)"""
-    start_dt = datetime.combine(date_start, time.min)
-    end_dt = datetime.combine(date_end, time.max)
-    return start_dt, end_dt
-
-# -----------------------------
-# Sliding Door Logic
-# -----------------------------
-def get_related_rooms(conn, room_id):
-    """Finds Room A + Room B if Combined Room is selected, and vice versa."""
+@contextmanager
+def get_db_connection():
+    """
+    Context manager to checkout a connection from the pool.
+    Guarantees 'putconn' is called even if code crashes.
+    """
+    pool_instance = get_db_pool()
+    conn = None
     try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT parent_room_id, child_room_id
-            FROM room_dependencies
-            WHERE parent_room_id = %s OR child_room_id = %s
-        """, (room_id, room_id))
-
-        related = {room_id}
-        for parent, child in cur.fetchall():
-            related.add(parent)
-            related.add(child)
-
-        return list(related)
-    except Exception:
-        return [room_id]
-
-def check_room_availability(room_id, date_start, date_end):
-    conn = get_connection()
-    if not conn: return False
-
-    try:
-        start_dt, end_dt = normalize_dates(date_start, date_end)
-        rooms = get_related_rooms(conn, room_id)
-
-        cur = conn.cursor()
-        # Checks if ANY related room is booked
-        cur.execute("""
-            SELECT COUNT(*)
-            FROM bookings
-            WHERE room_id = ANY(%s)
-              AND status IN ('Pending', 'Approved')
-              AND NOT (end_time < %s OR start_time > %s)
-        """, (list(rooms), start_dt, end_dt))
-
-        conflicts = cur.fetchone()[0]
-        return conflicts == 0
-
-    except Exception as e:
-        st.error(f"Room check failed: {e}")
-        return False
+        conn = pool_instance.getconn()
+        yield conn
     finally:
-        conn.close()
+        if conn:
+            pool_instance.putconn(conn)
 
-# -----------------------------
-# Ghost Inventory Logic
-# -----------------------------
-def check_asset_availability(item_id, quantity, date_start, date_end):
-    conn = get_connection()
-    if not conn: return False, quantity
+# ----------------------------------------------------------------------------
+# 2. QUERY EXECUTION LAYER (Security & ACID)
+# ----------------------------------------------------------------------------
+
+def run_query(query: str, params: tuple = None) -> pd.DataFrame:
+    """
+    Executes a SELECT query (Read-Only).
+    """
+    try:
+        with get_db_connection() as conn:
+            # Pandas read_sql does not close the connection; we return it to pool in 'finally'
+            return pd.read_sql(query, conn, params=params)
+    except Exception as e:
+        # Log to stderr for SRE visibility, return empty DF to prevent UI crash
+        print(f"SQL Error: {e}")
+        return pd.DataFrame()
+
+def run_transaction(query: str, params: tuple = None):
+    """
+    Executes INSERT/UPDATE/DELETE (Write).
+    Manages explicit commit/rollback to ensure pool hygiene.
+    """
+    conn = None
+    try:
+        # We manually manage the context to ensure we can rollback inside the except blocks
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+            conn.commit() # ACID Commit
+            return True
+    except psycopg2.errors.ExclusionViolation:
+        if conn: conn.rollback() # CRITICAL: Reset connection state
+        raise ValueError("Double Booking Prevented by Database Constraint.")
+    except Exception as e:
+        if conn: conn.rollback() # CRITICAL: Reset connection state
+        print(f"Transaction Failed: {e}")
+        raise e
+
+# ----------------------------------------------------------------------------
+# 3. UTILITIES (Timezone & Normalization)
+# ----------------------------------------------------------------------------
+
+def normalize_dates(date_input, time_start, time_end):
+    """
+    Combines date and time inputs into UTC-aware datetime objects.
+    1. Localizes input to user's timezone (Configured in secrets.toml).
+    2. Converts to UTC for database storage.
+    """
+    # Dynamic Config Injection
+    local_tz_name = st.secrets.get("timezone", "Africa/Johannesburg")
+
+    dt_start_naive = datetime.combine(date_input, time_start)
+    dt_end_naive = datetime.combine(date_input, time_end)
 
     try:
-        start_dt, end_dt = normalize_dates(date_start, date_end)
-        cur = conn.cursor()
+        local_tz = pytz.timezone(local_tz_name)
+    except pytz.UnknownTimeZoneError:
+        local_tz = pytz.UTC
 
-        # Get Total Stock
-        cur.execute("SELECT total_stock FROM catalog_items WHERE item_id = %s", (item_id,))
-        row = cur.fetchone()
-        if not row:
-             return False, quantity # Item doesn't exist
-        total_stock = row[0]
+    # Convert Local -> UTC for Storage
+    dt_start_utc = local_tz.localize(dt_start_naive).astimezone(pytz.UTC)
+    dt_end_utc = local_tz.localize(dt_end_naive).astimezone(pytz.UTC)
 
-        # Calculate Used Stock
-        cur.execute("""
-            SELECT COALESCE(SUM(bl.quantity), 0)
-            FROM booking_lines bl
-            JOIN bookings b ON bl.booking_id = b.booking_id
-            WHERE bl.item_id = %s
-              AND b.status IN ('Pending', 'Approved')
-              AND NOT (b.end_time < %s OR b.start_time > %s)
-        """, (item_id, start_dt, end_dt))
+    return dt_start_utc, dt_end_utc
 
-        used = cur.fetchone()[0]
-        remaining = total_stock - used
+# ----------------------------------------------------------------------------
+# 4. DOMAIN LOGIC (The "Sliding Doors" Implementation)
+# ----------------------------------------------------------------------------
 
-        if remaining < quantity:
-            return False, quantity - remaining
+def get_rooms():
+    """
+    Fetches available rooms.
+    Includes '0 as capacity' shim for legacy frontend compatibility.
+    """
+    sql = """
+          SELECT
+              id,
+              name,
+              0 as capacity
+          FROM rooms
+          ORDER BY name; \
+          """
+    return run_query(sql)
 
-        return True, 0
+def get_calendar_bookings(days_lookback=30):
+    """
+    Fetches bookings for the calendar view.
+    Uses Postgres Range operators (lower/upper) for v2.1 schema compatibility.
+    """
+    sql = """
+          SELECT
+              r.name as "Room",
+              b.booking_reference as "Ref",
+              lower(b.booking_period) as "Start",
+              upper(b.booking_period) as "End",
+              b.status as "Status"
+          FROM bookings b
+                   JOIN rooms r ON b.room_id = r.id
+          WHERE lower(b.booking_period) >= NOW() - (%s * INTERVAL '1 day')
+          ORDER BY lower(b.booking_period) DESC; \
+          """
+    return run_query(sql, (days_lookback,))
 
-    except Exception as e:
-        st.error(f"Inventory check failed: {e}")
-        return False, quantity
-    finally:
-        conn.close()
+def get_dashboard_stats():
+    """
+    Calculates KPIs for the Admin Dashboard.
+    """
+    sql = """
+          SELECT
+              COUNT(*) as total_bookings,
+              COUNT(*) FILTER (WHERE status = 'Approved') as approved,
+              COUNT(*) FILTER (WHERE lower(booking_period) > NOW()) as upcoming
+          FROM bookings; \
+          """
+    return run_query(sql)
+
+def create_booking(room_id, start_dt, end_dt, purpose, user_ref="SYSTEM"):
+    """
+    Core Transaction Logic.
+    1. Checks Constraints (via SQL Exception).
+    2. Inserts Booking via strict ACID transaction.
+    """
+    sql = """
+          INSERT INTO bookings (room_id, booking_period, status, booking_reference)
+          VALUES (%s, tstzrange(%s, %s, '[)'), 'Pending', %s)
+          RETURNING booking_reference; \
+          """
+    run_transaction(sql, (room_id, start_dt, end_dt, purpose))
