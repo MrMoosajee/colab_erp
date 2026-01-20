@@ -89,6 +89,17 @@ def run_transaction(query: str, params: tuple = None, fetch_one: bool = False):
         if conn:
             conn.rollback()  # CRITICAL: Reset connection state
         raise ValueError("Double Booking Prevented by Database Constraint.")
+    except psycopg2.errors.UndefinedColumn as e:
+        if conn:
+            conn.rollback()  # CRITICAL: Reset connection state
+        # Provide helpful error message for missing columns (e.g., booking_reference)
+        error_msg = str(e)
+        if "booking_reference" in error_msg.lower():
+            raise RuntimeError(
+                "Schema Error: booking_reference column missing. "
+                "Run: ALTER TABLE bookings ADD COLUMN booking_reference TEXT;"
+            ) from e
+        raise RuntimeError(f"Schema Error: {error_msg}") from e
     except Exception as e:
         if conn:
             conn.rollback()  # CRITICAL: Reset connection state
@@ -161,36 +172,62 @@ def get_calendar_bookings(days_lookback=30):
           """
     return run_query(sql, (days_lookback,))
 
-def get_dashboard_stats():
+def get_dashboard_stats(tenant_filter=None):
     """
     Calculates KPIs for the Admin Dashboard.
+    Supports optional filtering by Tenant (v2.2 Multi-Tenancy).
+    
+    Args:
+        tenant_filter: Optional tenant_type value ('TECH' or 'TRAINING') to filter results
     """
+    params = ()
     sql = """
           SELECT
               COUNT(*) as total_bookings,
               COUNT(*) FILTER (WHERE status = 'Approved') as approved,
               COUNT(*) FILTER (WHERE lower(booking_period) > NOW()) as upcoming
-          FROM bookings; \
+          FROM bookings
           """
-    return run_query(sql)
+    
+    if tenant_filter:
+        sql += " WHERE tenant_id = %s"
+        params = (tenant_filter,)
+    
+    sql += ";"
+    return run_query(sql, params)
 
-def create_booking(room_id, start_dt, end_dt, purpose, user_ref="SYSTEM"):
+def create_booking(room_id, start_dt, end_dt, purpose, user_ref="SYSTEM", tenant="TECH"):
     """
-    Core Transaction Logic.
+    Core Transaction Logic (v2.2 Multi-Tenancy Updated).
     1. Checks Constraints (via SQL Exception).
     2. Inserts Booking via strict ACID transaction.
+    3. Adds tenant attribution to the ACID transaction.
     
-    NOTE: purpose parameter is currently ignored until booking_reference column is added to schema.
-    To store booking purpose, add: ALTER TABLE bookings ADD COLUMN booking_reference TEXT;
+    Args:
+        room_id: Room identifier
+        start_dt: Start datetime (UTC)
+        end_dt: End datetime (UTC)
+        purpose: Booking purpose/reference text
+        user_ref: User reference (legacy parameter, currently unused)
+        tenant: Tenant identifier ('TECH' or 'TRAINING'), defaults to 'TECH'
+    
+    NOTE: If booking_reference column doesn't exist, this will raise a SQL error.
+    To add the column: ALTER TABLE bookings ADD COLUMN booking_reference TEXT;
+    
+    NOTE: Exclusion constraints remain GLOBAL. If 'TECH' books Room A at 10:00,
+    'TRAINING' cannot book Room A at 10:00 (shared physical assets).
     """
+    # Validate Tenant against Enum (Hardcoded safety)
+    valid_tenants = {'TECH', 'TRAINING'}
+    if tenant not in valid_tenants:
+        raise ValueError(f"Invalid Tenant: {tenant}. Must be one of {valid_tenants}")
+    
     sql = """
-          INSERT INTO bookings (room_id, booking_period, status)
-          VALUES (%s, tstzrange(%s, %s, '[)'), 'Pending')
+          INSERT INTO bookings (room_id, booking_period, status, booking_reference, tenant_id)
+          VALUES (%s, tstzrange(%s, %s, '[)'), 'Pending', %s, %s)
           RETURNING id; \
           """
-    # TODO: Once booking_reference column exists, include it: (room_id, booking_period, status, booking_reference)
-    # and VALUES (%s, tstzrange(%s, %s, '[)'), 'Pending', %s) with purpose in params
-    return run_transaction(sql, (room_id, start_dt, end_dt), fetch_one=True)
+    return run_transaction(sql, (room_id, start_dt, end_dt, purpose, tenant), fetch_one=True)
 
 
  
