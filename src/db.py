@@ -64,10 +64,12 @@ def run_query(query: str, params: tuple = None) -> pd.DataFrame:
         print(f"SQL Error: {e}")
         return pd.DataFrame()
 
-def run_transaction(query: str, params: tuple = None):
+def run_transaction(query: str, params: tuple = None, fetch_one: bool = False):
     """
     Executes INSERT/UPDATE/DELETE (Write).
     Manages explicit commit/rollback to ensure pool hygiene.
+
+    If fetch_one is True, returns cursor.fetchone() (useful for INSERT ... RETURNING).
     """
     conn = None
     try:
@@ -75,15 +77,18 @@ def run_transaction(query: str, params: tuple = None):
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(query, params)
-            conn.commit() # ACID Commit
-            return True
+                result = cur.fetchone() if fetch_one else None
+            conn.commit()  # ACID Commit
+            return result if fetch_one else True
     except psycopg2.errors.ExclusionViolation:
-        if conn: conn.rollback() # CRITICAL: Reset connection state
+        if conn:
+            conn.rollback()  # CRITICAL: Reset connection state
         raise ValueError("Double Booking Prevented by Database Constraint.")
     except Exception as e:
-        if conn: conn.rollback() # CRITICAL: Reset connection state
+        if conn:
+            conn.rollback()  # CRITICAL: Reset connection state
         print(f"Transaction Failed: {e}")
-        raise e
+        raise
 
 # ----------------------------------------------------------------------------
 # 3. UTILITIES (Timezone & Normalization)
@@ -96,7 +101,8 @@ def normalize_dates(date_input, time_start, time_end):
     2. Converts to UTC for database storage.
     """
     # Dynamic Config Injection
-    local_tz_name = st.secrets.get("timezone", "Africa/Johannesburg")
+    # Per runbook: timezone is configured under [postgres] and is UI-facing (input locale).
+    local_tz_name = st.secrets.get("postgres", {}).get("timezone", "Africa/Johannesburg")
 
     dt_start_naive = datetime.combine(date_input, time_start)
     dt_end_naive = datetime.combine(date_input, time_end)
@@ -174,4 +180,8 @@ def create_booking(room_id, start_dt, end_dt, purpose, user_ref="SYSTEM"):
           VALUES (%s, tstzrange(%s, %s, '[)'), 'Pending', %s)
           RETURNING booking_reference; \
           """
-    run_transaction(sql, (room_id, start_dt, end_dt, purpose))
+    # NOTE: booking_reference is a free-text reference field in current schema; we keep purpose separate at the UI level.
+    return run_transaction(sql, (room_id, start_dt, end_dt, user_ref), fetch_one=True)
+
+
+ 
