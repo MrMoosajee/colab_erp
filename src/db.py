@@ -54,15 +54,20 @@ def get_db_connection():
 def run_query(query: str, params: tuple = None) -> pd.DataFrame:
     """
     Executes a SELECT query (Read-Only).
+    Raises ConnectionError for connectivity issues, other exceptions for SQL errors.
+    Returns empty DataFrame only if query succeeds but returns no rows.
     """
     try:
         with get_db_connection() as conn:
             # Pandas read_sql does not close the connection; we return it to pool in 'finally'
             return pd.read_sql(query, conn, params=params)
+    except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+        # Connection/pool issues should bubble up
+        raise ConnectionError(f"Database connection failed: {e}") from e
     except Exception as e:
-        # Log to stderr for SRE visibility, return empty DF to prevent UI crash
+        # SQL errors (table doesn't exist, syntax error, etc.) should be visible
         print(f"SQL Error: {e}")
-        return pd.DataFrame()
+        raise RuntimeError(f"Query failed: {e}") from e
 
 def run_transaction(query: str, params: tuple = None, fetch_one: bool = False):
     """
@@ -141,11 +146,11 @@ def get_calendar_bookings(days_lookback=30):
     """
     Fetches bookings for the calendar view.
     Uses Postgres Range operators (lower/upper) for v2.1 schema compatibility.
+    NOTE: booking_reference column removed until schema is updated.
     """
     sql = """
           SELECT
               r.name as "Room",
-              b.booking_reference as "Ref",
               lower(b.booking_period) as "Start",
               upper(b.booking_period) as "End",
               b.status as "Status"
@@ -174,14 +179,18 @@ def create_booking(room_id, start_dt, end_dt, purpose, user_ref="SYSTEM"):
     Core Transaction Logic.
     1. Checks Constraints (via SQL Exception).
     2. Inserts Booking via strict ACID transaction.
+    
+    NOTE: purpose parameter is currently ignored until booking_reference column is added to schema.
+    To store booking purpose, add: ALTER TABLE bookings ADD COLUMN booking_reference TEXT;
     """
     sql = """
-          INSERT INTO bookings (room_id, booking_period, status, booking_reference)
-          VALUES (%s, tstzrange(%s, %s, '[)'), 'Pending', %s)
-          RETURNING booking_reference; \
+          INSERT INTO bookings (room_id, booking_period, status)
+          VALUES (%s, tstzrange(%s, %s, '[)'), 'Pending')
+          RETURNING id; \
           """
-    # NOTE: booking_reference is a free-text reference field in current schema; we keep purpose separate at the UI level.
-    return run_transaction(sql, (room_id, start_dt, end_dt, user_ref), fetch_one=True)
+    # TODO: Once booking_reference column exists, include it: (room_id, booking_period, status, booking_reference)
+    # and VALUES (%s, tstzrange(%s, %s, '[)'), 'Pending', %s) with purpose in params
+    return run_transaction(sql, (room_id, start_dt, end_dt), fetch_one=True)
 
 
  

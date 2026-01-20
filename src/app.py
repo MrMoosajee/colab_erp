@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+
+# Add project root to Python path for imports
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 import streamlit as st
 import src.db as db
 import src.auth as auth
@@ -36,6 +43,10 @@ def check_login(username, password):
         time.sleep(0.5)
         st.rerun()
 
+    except ConnectionError as e:
+        st.error(f"🚨 CRITICAL: Database unreachable: {e}")
+        st.info("Fix: verify Tailscale is up, the secrets.toml host IP is correct, and PostgreSQL is listening on the VPN interface.")
+        return
     except KeyError as e:
         st.error(f"🚨 CRITICAL: Auth secret missing: {e}")
         st.stop()
@@ -74,9 +85,17 @@ def render_new_booking_form():
     st.header("📝 New Booking Request")
 
     # 1. Fetch Rooms via Logic Bridge
-    rooms_df = db.get_rooms()
-    if rooms_df.empty:
-        st.error("Database Error: Unable to fetch room list.")
+    try:
+        rooms_df = db.get_rooms()
+        if rooms_df.empty:
+            st.warning("⚠️ No rooms found in database. Please add rooms first.")
+            return
+    except ConnectionError as e:
+        st.error(f"🚨 CRITICAL: Database unreachable: {e}")
+        st.info("Fix: verify Tailscale is up, the secrets.toml host IP is correct, and PostgreSQL is listening on the VPN interface.")
+        return
+    except Exception as e:
+        st.error(f"❌ Database Error: Unable to fetch room list: {e}")
         return
 
     with st.form("booking_form"):

@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+
+# Add project root to Python path for imports
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 import bcrypt
 import streamlit as st
 import src.db as db
@@ -34,6 +41,9 @@ def authenticate(username, password):
                         return {"user_id": user_id, "username": username, "role": role}
 
                 return None
+    except ConnectionError:
+        # Bubble up pool/DB connectivity failures so the UI can distinguish them
+        raise
     except Exception as e:
         st.error(f"Authentication failed: {e}")
         return None
