@@ -74,12 +74,17 @@ def render_login():
 
 def render_calendar_view():
     st.header("📅 Room Booking Calendar")
-    df = db.get_calendar_bookings()
-
-    if not df.empty:
-        st.dataframe(df, use_container_width=True)
-    else:
-        st.info("No upcoming bookings found.")
+    try:
+        df = db.get_calendar_bookings()
+        if not df.empty:
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.info("No upcoming bookings found.")
+    except ConnectionError as e:
+        st.error(f"🚨 CRITICAL: Database unreachable: {e}")
+        st.info("Fix: verify Tailscale is up, the secrets.toml host IP is correct, and PostgreSQL is listening on the VPN interface.")
+    except Exception as e:
+        st.error(f"❌ Database Error: Unable to fetch calendar bookings: {e}")
 
 def render_new_booking_form():
     st.header("📝 New Booking Request")
@@ -128,6 +133,11 @@ def render_new_booking_form():
 
             except ValueError as ve:
                 st.error(f"⛔ Booking Failed: {ve}")
+            except RuntimeError as re:
+                # Schema errors (e.g., missing booking_reference column)
+                st.error(f"❌ Schema Error: {re}")
+                if "booking_reference" in str(re).lower():
+                    st.info("💡 To enable purpose storage, run: `ALTER TABLE bookings ADD COLUMN booking_reference TEXT;`")
             except Exception as e:
                 st.error(f"❌ System Error: {e}")
 
@@ -140,10 +150,10 @@ def render_admin_dashboard():
     st.header("📊 Admin Dashboard")
 
     # Fetch Stats via Logic Bridge
-    df = db.get_dashboard_stats()
-
-    col1, col2, col3 = st.columns(3)
     try:
+        df = db.get_dashboard_stats()
+        
+        col1, col2, col3 = st.columns(3)
         if not df.empty:
             total = df.iloc[0]['total_bookings']
             approved = df.iloc[0]['approved']
@@ -154,8 +164,11 @@ def render_admin_dashboard():
         col1.metric("Total Bookings", total)
         col2.metric("Approved", approved)
         col3.metric("Upcoming", upcoming)
+    except ConnectionError as e:
+        st.error(f"🚨 CRITICAL: Database unreachable: {e}")
+        st.info("Fix: verify Tailscale is up, the secrets.toml host IP is correct, and PostgreSQL is listening on the VPN interface.")
     except Exception as e:
-        st.error(f"Metric Rendering Error: {e}")
+        st.error(f"❌ Database Error: Unable to fetch dashboard stats: {e}")
 
     st.divider()
     st.subheader("Revenue & Utilization (v2.1)")
