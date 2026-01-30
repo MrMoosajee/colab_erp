@@ -13,34 +13,34 @@ def authenticate(username, password):
     try:
         with db.get_db_connection() as conn:
             with conn.cursor() as cur:
-                # Fetch the hash stored in the DB
+        # Fetch the hash stored in the DB
                 cur.execute(
                     """
-                    SELECT user_id, username, role, password_hash
-                    FROM users
-                    WHERE username = %s
+            SELECT user_id, username, role, password_hash
+            FROM users
+            WHERE username = %s
                     """,
                     (username,),
                 )
 
-                row = cur.fetchone()
-                if not row:
-                    return None
+        row = cur.fetchone()
+        if not row:
+            return None
 
-                user_id, username, role, pw_hash = row
+        user_id, username, role, pw_hash = row
 
-                # VERIFY: Check if the plain password matches the Hash
-                try:
+        # VERIFY: Check if the plain password matches the Hash
+        try:
                     if pw_hash is None:
                         return None
                     if bcrypt.checkpw(password.encode(), str(pw_hash).encode()):
-                        return {"user_id": user_id, "username": username, "role": role}
-                except ValueError:
+                return {"user_id": user_id, "username": username, "role": role}
+        except ValueError:
                     # FAILSAFE: If a legacy plain password is stored (manual insert), this catches it.
-                    if password == pw_hash:
-                        return {"user_id": user_id, "username": username, "role": role}
+            if password == pw_hash:
+                 return {"user_id": user_id, "username": username, "role": role}
 
-                return None
+        return None
     except ConnectionError:
         # Bubble up pool/DB connectivity failures so the UI can distinguish them
         raise

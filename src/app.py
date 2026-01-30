@@ -36,17 +36,17 @@ def check_login(username, password):
             st.error("Invalid Credentials")
             return
 
-        st.session_state['authenticated'] = True
+            st.session_state['authenticated'] = True
         st.session_state['username'] = user["username"]
         st.session_state['role'] = user["role"]
         st.success(f"Login Successful ({user['role']})")
-        time.sleep(0.5)
-        st.rerun()
+            time.sleep(0.5)
+            st.rerun()
 
     except ConnectionError as e:
         st.error(f"🚨 CRITICAL: Database unreachable: {e}")
         st.info("Fix: verify Tailscale is up, the secrets.toml host IP is correct, and PostgreSQL is listening on the VPN interface.")
-        return
+            return
     except KeyError as e:
         st.error(f"🚨 CRITICAL: Auth secret missing: {e}")
         st.stop()
@@ -75,11 +75,11 @@ def render_login():
 def render_calendar_view():
     st.header("📅 Room Booking Calendar")
     try:
-        df = db.get_calendar_bookings()
-        if not df.empty:
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.info("No upcoming bookings found.")
+    df = db.get_calendar_bookings()
+    if not df.empty:
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("No upcoming bookings found.")
     except ConnectionError as e:
         st.error(f"🚨 CRITICAL: Database unreachable: {e}")
         st.info("Fix: verify Tailscale is up, the secrets.toml host IP is correct, and PostgreSQL is listening on the VPN interface.")
@@ -91,8 +91,8 @@ def render_new_booking_form():
 
     # 1. Fetch Rooms via Logic Bridge
     try:
-        rooms_df = db.get_rooms()
-        if rooms_df.empty:
+    rooms_df = db.get_rooms()
+    if rooms_df.empty:
             st.warning("⚠️ No rooms found in database. Please add rooms first.")
             return
     except ConnectionError as e:
@@ -151,9 +151,9 @@ def render_admin_dashboard():
 
     # Fetch Stats via Logic Bridge
     try:
-        df = db.get_dashboard_stats()
-        
-        col1, col2, col3 = st.columns(3)
+    df = db.get_dashboard_stats()
+
+    col1, col2, col3 = st.columns(3)
         if not df.empty:
             total = df.iloc[0]['total_bookings']
             approved = df.iloc[0]['approved']

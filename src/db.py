@@ -192,7 +192,7 @@ def get_dashboard_stats(tenant_filter=None):
     if tenant_filter:
         sql += " WHERE tenant_id = %s"
         params = (tenant_filter,)
-    
+
     sql += ";"
     return run_query(sql, params)
 
