@@ -1,26 +1,22 @@
-# Security (CRITICAL)
-.streamlit/secrets.toml
-.env
-*.pem
-*.key
-
-# Python / Environment
-venv/
+# Python
 __pycache__/
 *.pyc
 *.pyo
-
-# IDE / JetBrains (Keep repo clean)
+*.pyd
+.Python
+env/
+venv/
+venv.bak/
 .idea/
 .vscode/
-*.swp
-*.swo
-
-# OS Junk
 .DS_Store
-Thumbs.db
-
-# Logs & Databases
+.env
 *.log
-*.sqlite3
-*.db
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+.streamlit/secrets.toml
+.secure_vault/
+files (1)/
+__pycache__/
+*.py[cod]
