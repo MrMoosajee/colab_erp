@@ -75,9 +75,16 @@ Apply the v2.2 foundation migration to update the schema:
 
 Bash
 psql -h <host> -U <user> -d colab_erp -f migrations/v2.2_audit_and_agent_foundation.sql
+
 3. Execution
 Bash
 streamlit run src/app.py
+
+4. Run tests
+Bash
+pip install -r requirements.txt
+pytest -q
+
 🛡️ Security & Observability
 Auditability: Every agent operation is logged to audit_log with execution time and metadata.
 
