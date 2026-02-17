@@ -174,6 +174,10 @@ def render_admin_dashboard():
     st.subheader("Revenue & Utilization (v2.1)")
     st.caption("Ghost Inventory tracking is active.")
 
+    st.divider()
+    # Always show the calendar below dashboard metrics for admin
+    render_calendar_view()
+
 # ----------------------------------------------------------------------------
 # MAIN CONTROLLER
 # ----------------------------------------------------------------------------
@@ -189,11 +193,10 @@ def main():
     st.sidebar.caption(f"User: {st.session_state['username']} ({st.session_state['role']})")
     st.sidebar.info("System Status: 🟢 Online (Headless)")
 
-    # Navigation Logic based on Role
+    # Navigation Logic: all roles see Calendar, admin also sees Dashboard
     if st.session_state['role'] == 'admin':
         menu = ["Dashboard", "Calendar", "New Booking"]
     else:
-        # Staff see a limited menu
         menu = ["Calendar", "New Booking"]
 
     choice = st.sidebar.radio("Navigation", menu)
