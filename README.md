@@ -1,4 +1,5 @@
 📘 Colab ERP v2.2: Infrastructure Reference
+[![CI](https://github.com/MrMoosajee/colab_erp/actions/workflows/ci.yml/badge.svg)](https://github.com/MrMoosajee/colab_erp/actions/workflows/ci.yml)
 Classification: Internal Restricted
 
 Quadrant: Reference / Explanation
