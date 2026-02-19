@@ -28,7 +28,8 @@ from psycopg2.pool import ThreadedConnectionPool
 
 # Import the existing v2.1.3 pool from db.py
 import sys
-sys.path.insert(0, '/home/shuaibadams/Projects/colab_erp')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db import get_db_pool
 
 # Configure logging

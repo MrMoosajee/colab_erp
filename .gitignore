@@ -16,6 +16,7 @@ venv.bak/
 # Jupyter Notebook
 .ipynb_checkpoints/
 .streamlit/secrets.toml
+.streamlit/machine_id_v4
 .secure_vault/
 files (1)/
 __pycache__/
