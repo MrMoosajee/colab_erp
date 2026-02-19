@@ -174,7 +174,7 @@ def render_new_booking_form():
 
 def render_admin_dashboard():
     # RBAC Check: Only Admins can see the dashboard
-    if st.session_state.get('role') != 'admin':
+    if (st.session_state.get('role') or '').lower() != 'admin':
         st.warning("⛔ Access Denied: You do not have permission to view this page.")
         return
 
@@ -221,7 +221,7 @@ def main():
     st.sidebar.info("System Status: 🟢 Online (Headless)")
 
     # Navigation Logic based on Role
-    if st.session_state['role'] == 'admin':
+    if st.session_state['role'].lower() == 'admin':
         menu = ["Dashboard", "Calendar", "New Booking"]
     else:
         # Staff see a limited menu
