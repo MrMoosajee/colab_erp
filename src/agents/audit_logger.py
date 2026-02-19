@@ -39,6 +39,7 @@ import time
 from typing import Optional, Dict, Any
 from datetime import datetime
 import json
+import psycopg2.extras as pg_extras
 
 from .pool_manager import get_pool_manager, PoolSaturationError, AgentConnectionError
 
@@ -189,8 +190,8 @@ class AuditLogger:
             int: audit_log.id, or None if write failed
         """
         try:
-            # Convert metadata dict to JSON string for JSONB column
-            metadata_json = json.dumps(metadata) if metadata else None
+            # Convert metadata dict to a psycopg2 JSON adapter for safe JSONB storage
+            metadata_param = pg_extras.Json(metadata) if metadata is not None else None
             
             # Use the approved AgentPoolManager for connection safety
             with self._pool_manager.get_agent_connection(self.agent_id) as conn:
@@ -206,7 +207,7 @@ class AuditLogger:
                             self.agent_id,
                             operation,
                             resource,
-                            metadata_json,
+                            metadata_param,
                             execution_time_ms,
                             error_message
                         )

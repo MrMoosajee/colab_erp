@@ -91,7 +91,7 @@ class SecureVaultInterface:
     """
     
     # Vault location (MUST be outside Git repository)
-    VAULT_PATH = "/home/colabtechsolutions/.secure_vault"
+    VAULT_PATH = os.environ.get("COLAB_VAULT_PATH", "/home/colabtechsolutions/.secure_vault")
     
     # Allowed file extensions (security whitelist)
     ALLOWED_EXTENSIONS = [".pdf", ".xlsx", ".xls", ".xml", ".csv"]
@@ -150,28 +150,30 @@ class SecureVaultInterface:
             SecurityViolationError: If vault is tracked by Git
         """
         try:
-            # Get Git repository root
-            git_root = subprocess.check_output(
-                ["git", "rev-parse", "--show-toplevel"],
-                cwd="/home/colabtechsolutions/colab_erp",
-                stderr=subprocess.DEVNULL
-            ).decode().strip()
-            
-            # Check if vault is inside Git repo
-            if str(self.vault_path).startswith(git_root):
-                error_msg = (
-                    f"SECURITY VIOLATION: Vault is inside Git repository! "
-                    f"Vault: {self.vault_path}, Git: {git_root}"
-                )
-                logger.critical(error_msg)
-                self._log_vault_access("security_violation", "git_isolation_check")
-                raise SecurityViolationError(error_msg)
-            
-            logger.info("✓ Vault is isolated from Git repository")
-        
-        except subprocess.CalledProcessError:
-            # Not in a Git repository - this is fine
-            logger.warning("Could not verify Git isolation (not in a Git repo?)")
+            # Get Git repository root (use repo-relative path where possible)
+            repo_candidate = Path(__file__).resolve().parents[2]
+            try:
+                git_root = subprocess.check_output(
+                    ["git", "rev-parse", "--show-toplevel"],
+                    cwd=str(repo_candidate),
+                    stderr=subprocess.DEVNULL,
+                ).decode().strip()
+
+                # Check if vault is inside Git repo
+                if str(self.vault_path).startswith(git_root):
+                    error_msg = (
+                        f"SECURITY VIOLATION: Vault is inside Git repository! "
+                        f"Vault: {self.vault_path}, Git: {git_root}"
+                    )
+                    logger.critical(error_msg)
+                    self._log_vault_access("security_violation", "git_isolation_check")
+                    raise SecurityViolationError(error_msg)
+
+                logger.info("✓ Vault is isolated from Git repository")
+
+            except subprocess.CalledProcessError:
+                # Not in a Git repository - this is fine
+                logger.warning("Could not verify Git isolation (not in a Git repo?)")
     
     def _validate_file_path(self, file_path: Path):
         """
@@ -197,8 +199,8 @@ class SecureVaultInterface:
             self._log_vault_access("security_violation", str(file_path))
             raise SecurityViolationError(error_msg)
         
-        # Check file extension
-        if file_path.suffix not in self.ALLOWED_EXTENSIONS:
+        # Check file extension (case-insensitive)
+        if file_path.suffix.lower() not in [ext.lower() for ext in self.ALLOWED_EXTENSIONS]:
             error_msg = f"Disallowed file extension: {file_path.suffix}"
             logger.warning(error_msg)
             raise SecurityViolationError(error_msg)

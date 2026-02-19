@@ -11,7 +11,7 @@ import src.auth as auth
 import time
 
 # Page Config
-st.set_page_config(page_title="Colab ERP v2.2.0", layout="wide")
+st.set_page_config(page_title="Colab ERP v2.1.1", layout="wide")
 
 # ----------------------------------------------------------------------------
 # AUTHENTICATION
@@ -28,25 +28,56 @@ def init_session_state():
 
 def check_login(username, password):
     """
-    DB-backed credential check (bcrypt).
+    Dual auth: tries DB-backed bcrypt first, falls back to secrets.toml
+    if the database is unreachable.
     """
+    # --- Attempt 1: DB-backed auth (v2.2.0 - preferred) ---
     try:
         user = auth.authenticate(username, password)
-        if not user:
-            st.error("Invalid Credentials")
-            return
-
+        if user:
             st.session_state['authenticated'] = True
-        st.session_state['username'] = user["username"]
-        st.session_state['role'] = user["role"]
-        st.success(f"Login Successful ({user['role']})")
+            st.session_state['username'] = user["username"]
+            st.session_state['role'] = user["role"]
+            st.success(f"Login Successful ({user['role']})")
             time.sleep(0.5)
             st.rerun()
-
-    except ConnectionError as e:
-        st.error(f"🚨 CRITICAL: Database unreachable: {e}")
-        st.info("Fix: verify Tailscale is up, the secrets.toml host IP is correct, and PostgreSQL is listening on the VPN interface.")
             return
+        # user is None => credentials didn't match in DB
+        # Fall through to secrets.toml check below
+    except ConnectionError:
+        # DB unreachable — fall back to secrets.toml
+        pass
+    except Exception:
+        # Any other DB/auth error — fall back to secrets.toml
+        pass
+
+    # --- Attempt 2: secrets.toml fallback (v2.1.1 legacy) ---
+    try:
+        admin_user = st.secrets["auth"]["admin_user"]
+        admin_pass = st.secrets["auth"]["admin_password"]
+        staff_user = st.secrets["auth"]["staff_user"]
+        staff_pass = st.secrets["auth"]["staff_password"]
+
+        if username == admin_user and password == admin_pass:
+            st.session_state['authenticated'] = True
+            st.session_state['username'] = username
+            st.session_state['role'] = 'admin'
+            st.success("Login Successful (Admin)")
+            time.sleep(0.5)
+            st.rerun()
+            return
+
+        if username == staff_user and password == staff_pass:
+            st.session_state['authenticated'] = True
+            st.session_state['username'] = username
+            st.session_state['role'] = 'staff'
+            st.success("Login Successful (Staff)")
+            time.sleep(0.5)
+            st.rerun()
+            return
+
+        st.error("Invalid Credentials")
+
     except KeyError as e:
         st.error(f"🚨 CRITICAL: Auth secret missing: {e}")
         st.stop()
@@ -60,7 +91,7 @@ def logout():
 
 def render_login():
     st.title("🔐 Colab ERP Access")
-    st.caption("v2.2.0 Production | Unauthorized Access Prohibited")
+    st.caption("v2.1.1 Production | Unauthorized Access Prohibited")
     with st.form("login_form"):
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
@@ -75,11 +106,11 @@ def render_login():
 def render_calendar_view():
     st.header("📅 Room Booking Calendar")
     try:
-    df = db.get_calendar_bookings()
-    if not df.empty:
-        st.dataframe(df, use_container_width=True)
-    else:
-        st.info("No upcoming bookings found.")
+        df = db.get_calendar_bookings()
+        if not df.empty:
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.info("No upcoming bookings found.")
     except ConnectionError as e:
         st.error(f"🚨 CRITICAL: Database unreachable: {e}")
         st.info("Fix: verify Tailscale is up, the secrets.toml host IP is correct, and PostgreSQL is listening on the VPN interface.")
@@ -91,8 +122,8 @@ def render_new_booking_form():
 
     # 1. Fetch Rooms via Logic Bridge
     try:
-    rooms_df = db.get_rooms()
-    if rooms_df.empty:
+        rooms_df = db.get_rooms()
+        if rooms_df.empty:
             st.warning("⚠️ No rooms found in database. Please add rooms first.")
             return
     except ConnectionError as e:
@@ -151,9 +182,9 @@ def render_admin_dashboard():
 
     # Fetch Stats via Logic Bridge
     try:
-    df = db.get_dashboard_stats()
+        df = db.get_dashboard_stats()
 
-    col1, col2, col3 = st.columns(3)
+        col1, col2, col3 = st.columns(3)
         if not df.empty:
             total = df.iloc[0]['total_bookings']
             approved = df.iloc[0]['approved']
@@ -185,7 +216,7 @@ def main():
         render_login()
         return
 
-    st.sidebar.title("Colab ERP v2.2.0")
+    st.sidebar.title("Colab ERP v2.1.1")
     st.sidebar.caption(f"User: {st.session_state['username']} ({st.session_state['role']})")
     st.sidebar.info("System Status: 🟢 Online (Headless)")
 

@@ -39,6 +39,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 from contextlib import contextmanager
 import logging
+import json
 
 from .pool_manager import get_pool_manager
 from .audit_logger import create_logger
@@ -386,9 +387,12 @@ class BaseAgent(ABC):
                             updated_at = NOW()
                         WHERE agent_id = %s
                         """,
-                        (str(new_config), updated_by, self.agent_id)
+                        (json.dumps(new_config), updated_by, self.agent_id)
                     )
                     conn.commit()
+
+            # Refresh in-memory config to reflect DB change
+            self.config = self._load_config()
             
             # Log the config change
             self.log_action(
