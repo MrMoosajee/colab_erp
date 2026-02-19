@@ -22,12 +22,14 @@ import logging
 from contextlib import contextmanager
 from typing import Generator, Optional
 import time
+import threading
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
 
 # Import the existing v2.1.3 pool from db.py
 import sys
-sys.path.insert(0, '/home/shuaibadams/Projects/colab_erp')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db import get_db_pool
 
 # Configure logging
@@ -95,7 +97,8 @@ class AgentPoolManager:
         """Initialize the pool manager."""
         self._pool = None  # Lazy initialization
         self._connection_count = 0  # Track active agent connections
-        
+        self._lock = threading.Lock()
+
         logger.info("AgentPoolManager initialized")
         logger.info(f"Configuration: {self.POOL_ALLOCATION}")
     
@@ -124,7 +127,9 @@ class AgentPoolManager:
         # Approximate calculation based on agent connections
         # In production, would query pg_stat_activity for exact count
         estimated_ui_connections = 8  # Conservative estimate during peak
-        total_estimated = self._connection_count + estimated_ui_connections
+        with self._lock:
+            conn_count = self._connection_count
+        total_estimated = conn_count + estimated_ui_connections
         
         saturation = total_estimated / 20.0  # 20 = maxconn
         
@@ -192,8 +197,9 @@ class AgentPoolManager:
                             (f"agent_{agent_id}",)
                         )
                     
-                    # Track active agent connections
-                    self._connection_count += 1
+                    # Track active agent connections (thread-safe)
+                    with self._lock:
+                        self._connection_count += 1
                     
                     elapsed = time.time() - start_time
                     logger.info(
@@ -238,8 +244,9 @@ class AgentPoolManager:
                     # Return to pool
                     pool.putconn(conn)
                     
-                    # Decrement connection counter
-                    self._connection_count = max(0, self._connection_count - 1)
+                    # Decrement connection counter (thread-safe)
+                    with self._lock:
+                        self._connection_count = max(0, self._connection_count - 1)
                     
                     elapsed = time.time() - start_time
                     logger.info(

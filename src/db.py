@@ -54,18 +54,14 @@ def get_db_connection():
 def run_query(query: str, params: tuple = None) -> pd.DataFrame:
     """
     Executes a SELECT query (Read-Only).
-    Raises ConnectionError for connectivity issues, other exceptions for SQL errors.
-    Returns empty DataFrame only if query succeeds but returns no rows.
+    Raises ConnectionError for connectivity issues, RuntimeError for SQL errors.
     """
     try:
         with get_db_connection() as conn:
-            # Pandas read_sql does not close the connection; we return it to pool in 'finally'
             return pd.read_sql(query, conn, params=params)
     except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-        # Connection/pool issues should bubble up
         raise ConnectionError(f"Database connection failed: {e}") from e
     except Exception as e:
-        # SQL errors (table doesn't exist, syntax error, etc.) should be visible
         print(f"SQL Error: {e}")
         raise RuntimeError(f"Query failed: {e}") from e
 
@@ -73,26 +69,22 @@ def run_transaction(query: str, params: tuple = None, fetch_one: bool = False):
     """
     Executes INSERT/UPDATE/DELETE (Write).
     Manages explicit commit/rollback to ensure pool hygiene.
-
-    If fetch_one is True, returns cursor.fetchone() (useful for INSERT ... RETURNING).
     """
     conn = None
     try:
-        # We manually manage the context to ensure we can rollback inside the except blocks
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(query, params)
                 result = cur.fetchone() if fetch_one else None
-            conn.commit()  # ACID Commit
+            conn.commit() # ACID Commit
             return result if fetch_one else True
     except psycopg2.errors.ExclusionViolation:
         if conn:
-            conn.rollback()  # CRITICAL: Reset connection state
+            conn.rollback() # CRITICAL: Reset connection state
         raise ValueError("Double Booking Prevented by Database Constraint.")
     except psycopg2.errors.UndefinedColumn as e:
         if conn:
-            conn.rollback()  # CRITICAL: Reset connection state
-        # Provide helpful error message for missing columns (e.g., booking_reference)
+            conn.rollback()
         error_msg = str(e)
         if "booking_reference" in error_msg.lower():
             raise RuntimeError(
@@ -102,7 +94,7 @@ def run_transaction(query: str, params: tuple = None, fetch_one: bool = False):
         raise RuntimeError(f"Schema Error: {error_msg}") from e
     except Exception as e:
         if conn:
-            conn.rollback()  # CRITICAL: Reset connection state
+            conn.rollback() # CRITICAL: Reset connection state
         print(f"Transaction Failed: {e}")
         raise
 
@@ -117,7 +109,6 @@ def normalize_dates(date_input, time_start, time_end):
     2. Converts to UTC for database storage.
     """
     # Dynamic Config Injection
-    # Per runbook: timezone is configured under [postgres] and is UI-facing (input locale).
     local_tz_name = st.secrets.get("postgres", {}).get("timezone", "Africa/Johannesburg")
 
     dt_start_naive = datetime.combine(date_input, time_start)
@@ -157,11 +148,11 @@ def get_calendar_bookings(days_lookback=30):
     """
     Fetches bookings for the calendar view.
     Uses Postgres Range operators (lower/upper) for v2.1 schema compatibility.
-    NOTE: booking_reference column removed until schema is updated.
     """
     sql = """
           SELECT
               r.name as "Room",
+              b.booking_reference as "Ref",
               lower(b.booking_period) as "Start",
               upper(b.booking_period) as "End",
               b.status as "Status"
@@ -172,62 +163,28 @@ def get_calendar_bookings(days_lookback=30):
           """
     return run_query(sql, (days_lookback,))
 
-def get_dashboard_stats(tenant_filter=None):
+def get_dashboard_stats():
     """
     Calculates KPIs for the Admin Dashboard.
-    Supports optional filtering by Tenant (v2.2 Multi-Tenancy).
-    
-    Args:
-        tenant_filter: Optional tenant_type value ('TECH' or 'TRAINING') to filter results
     """
-    params = ()
     sql = """
           SELECT
               COUNT(*) as total_bookings,
               COUNT(*) FILTER (WHERE status = 'Approved') as approved,
               COUNT(*) FILTER (WHERE lower(booking_period) > NOW()) as upcoming
-          FROM bookings
+          FROM bookings; \
           """
-    
-    if tenant_filter:
-        sql += " WHERE tenant_id = %s"
-        params = (tenant_filter,)
+    return run_query(sql)
 
-    sql += ";"
-    return run_query(sql, params)
-
-def create_booking(room_id, start_dt, end_dt, purpose, user_ref="SYSTEM", tenant="TECH"):
+def create_booking(room_id, start_dt, end_dt, purpose, user_ref="SYSTEM"):
     """
-    Core Transaction Logic (v2.2 Multi-Tenancy Updated).
+    Core Transaction Logic.
     1. Checks Constraints (via SQL Exception).
     2. Inserts Booking via strict ACID transaction.
-    3. Adds tenant attribution to the ACID transaction.
-    
-    Args:
-        room_id: Room identifier
-        start_dt: Start datetime (UTC)
-        end_dt: End datetime (UTC)
-        purpose: Booking purpose/reference text
-        user_ref: User reference (legacy parameter, currently unused)
-        tenant: Tenant identifier ('TECH' or 'TRAINING'), defaults to 'TECH'
-    
-    NOTE: If booking_reference column doesn't exist, this will raise a SQL error.
-    To add the column: ALTER TABLE bookings ADD COLUMN booking_reference TEXT;
-    
-    NOTE: Exclusion constraints remain GLOBAL. If 'TECH' books Room A at 10:00,
-    'TRAINING' cannot book Room A at 10:00 (shared physical assets).
     """
-    # Validate Tenant against Enum (Hardcoded safety)
-    valid_tenants = {'TECH', 'TRAINING'}
-    if tenant not in valid_tenants:
-        raise ValueError(f"Invalid Tenant: {tenant}. Must be one of {valid_tenants}")
-    
     sql = """
-          INSERT INTO bookings (room_id, booking_period, status, booking_reference, tenant_id)
-          VALUES (%s, tstzrange(%s, %s, '[)'), 'Pending', %s, %s)
+          INSERT INTO bookings (room_id, booking_period, status, booking_reference)
+          VALUES (%s, tstzrange(%s, %s, '[)'), 'Pending', %s)
           RETURNING id; \
           """
-    return run_transaction(sql, (room_id, start_dt, end_dt, purpose, tenant), fetch_one=True)
-
-
- 
+    return run_transaction(sql, (room_id, start_dt, end_dt, purpose), fetch_one=True)
