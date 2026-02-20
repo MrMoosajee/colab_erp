@@ -54,11 +54,16 @@ def get_db_connection():
 def run_query(query: str, params: tuple = None) -> pd.DataFrame:
     """
     Executes a SELECT query (Read-Only).
+    Uses cursor-based execution to avoid pandas SQLAlchemy deprecation warning.
     Raises ConnectionError for connectivity issues, RuntimeError for SQL errors.
     """
     try:
         with get_db_connection() as conn:
-            return pd.read_sql(query, conn, params=params)
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                columns = [desc[0] for desc in cur.description]
+                rows = cur.fetchall()
+            return pd.DataFrame(rows, columns=columns)
     except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
         raise ConnectionError(f"Database connection failed: {e}") from e
     except Exception as e:
