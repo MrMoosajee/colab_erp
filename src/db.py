@@ -168,6 +168,25 @@ def get_calendar_bookings(days_lookback=30):
           """
     return run_query(sql, (days_lookback,))
 
+def get_calendar_grid(start_date, end_date):
+    """
+    Fetches bookings as a grid: date x room -> client_name.
+    Returns raw rows for the app layer to pivot into a calendar grid.
+    """
+    sql = """
+          SELECT
+              lower(b.booking_period)::date as booking_date,
+              r.name as room_name,
+              b.client_name
+          FROM bookings b
+                   JOIN rooms r ON b.room_id = r.id
+          WHERE lower(b.booking_period)::date >= %s
+            AND lower(b.booking_period)::date <= %s
+            AND r.parent_room_id IS NULL
+          ORDER BY lower(b.booking_period)::date, r.id;
+          """
+    return run_query(sql, (start_date, end_date))
+
 def get_dashboard_stats():
     """
     Calculates KPIs for the Admin Dashboard.

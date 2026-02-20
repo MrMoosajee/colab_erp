@@ -105,12 +105,107 @@ def render_login():
 
 def render_calendar_view():
     st.header("📅 Room Booking Calendar")
-    try:
-        df = db.get_calendar_bookings()
-        if not df.empty:
-            st.dataframe(df, use_container_width=True)
+
+    import pandas as pd
+    from datetime import datetime, timedelta
+
+    # --- Week Navigation ---
+    if 'calendar_week_offset' not in st.session_state:
+        st.session_state['calendar_week_offset'] = 0
+
+    nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1, 1, 1, 1])
+    with nav_col1:
+        if st.button("◀ Previous Week"):
+            st.session_state['calendar_week_offset'] -= 1
+            st.rerun()
+    with nav_col2:
+        if st.button("Today"):
+            st.session_state['calendar_week_offset'] = 0
+            st.rerun()
+    with nav_col3:
+        if st.button("Next Week ▶"):
+            st.session_state['calendar_week_offset'] += 1
+            st.rerun()
+    with nav_col4:
+        view_mode = st.selectbox("View", ["Weekly", "Monthly"], label_visibility="collapsed")
+
+    # Calculate date range
+    today = datetime.now().date()
+    if view_mode == "Weekly":
+        week_start = today - timedelta(days=today.weekday()) + timedelta(weeks=st.session_state['calendar_week_offset'])
+        week_end = week_start + timedelta(days=6)
+        st.subheader(f"{week_start.strftime('%d %B %Y')} — {week_end.strftime('%d %B %Y')}")
+    else:
+        month_offset = st.session_state['calendar_week_offset']
+        month = today.month + month_offset
+        year = today.year
+        while month > 12:
+            month -= 12
+            year += 1
+        while month < 1:
+            month += 12
+            year -= 1
+        week_start = datetime(year, month, 1).date()
+        if month == 12:
+            week_end = datetime(year + 1, 1, 1).date() - timedelta(days=1)
         else:
-            st.info("No upcoming bookings found.")
+            week_end = datetime(year, month + 1, 1).date() - timedelta(days=1)
+        st.subheader(f"{week_start.strftime('%B %Y')}")
+
+    try:
+        df = db.get_calendar_grid(week_start, week_end)
+
+        if df.empty:
+            st.info("No bookings for this period.")
+            return
+
+        # Room display order
+        room_order = [
+            "Excellence", "Inspiration", "Honesty", "Gratitude",
+            "Ambition", "Perseverence", "Courage", "Possibilities",
+            "Motivation", "A302", "A303", "Success", "Respect",
+            "Innovation", "Dedication", "Integrity",
+            "Empower", "Focus", "Growth", "Wisdom",
+            "Vision", "Potential", "Synergy"
+        ]
+
+        # Pivot: rows = dates, columns = rooms, values = client names
+        pivot = df.pivot_table(
+            index='booking_date',
+            columns='room_name',
+            values='client_name',
+            aggfunc=lambda x: ', '.join(sorted(set(x)))
+        )
+
+        # Build full date range (include empty days)
+        all_dates = pd.date_range(start=week_start, end=week_end, freq='D')
+        pivot = pivot.reindex(all_dates)
+        pivot.index = pivot.index.date
+
+        # Reorder columns to match room_order, drop missing
+        ordered_cols = [r for r in room_order if r in pivot.columns]
+        pivot = pivot[ordered_cols]
+
+        # Add Day column
+        pivot.insert(0, 'Day', [datetime.combine(d, datetime.min.time()).strftime('%a') for d in pivot.index])
+
+        # Fill NaN with empty string
+        pivot = pivot.fillna("")
+
+        # Style weekends and today
+        def style_calendar(row):
+            date = row.name
+            day_of_week = datetime.combine(date, datetime.min.time()).weekday()
+            if date == today:
+                return ['background-color: #1a3a2a; color: #4ade80; font-weight: bold'] * len(row)
+            elif day_of_week >= 5:
+                return ['background-color: #1a1a2e; color: #666'] * len(row)
+            else:
+                return [''] * len(row)
+
+        styled = pivot.style.apply(style_calendar, axis=1)
+        st.dataframe(styled, use_container_width=True, height=600)
+
     except ConnectionError as e:
         st.error(f"🚨 CRITICAL: Database unreachable: {e}")
         st.info("Fix: verify Tailscale is up, the secrets.toml host IP is correct, and PostgreSQL is listening on the VPN interface.")
