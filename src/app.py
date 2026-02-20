@@ -159,21 +159,40 @@ def render_calendar_view():
             st.info("No bookings for this period.")
             return
 
-        # Room display order
+        import re
+
+        # Room display order — includes split room
         room_order = [
             "Excellence", "Inspiration", "Honesty", "Gratitude",
-            "Ambition", "Perseverence", "Courage", "Possibilities",
-            "Motivation", "A302", "A303", "Success", "Respect",
-            "Innovation", "Dedication", "Integrity",
+            "Ambition", "Perseverence", "Ambition+Perseverence",
+            "Courage", "Possibilities", "Motivation", "A302", "A303",
+            "Success", "Respect", "Innovation", "Dedication", "Integrity",
             "Empower", "Focus", "Growth", "Wisdom",
             "Vision", "Potential", "Synergy"
         ]
 
-        # Pivot: rows = dates, columns = rooms, values = client names
+        # Build cell labels: "Client (headcount)" + laptop icon if applicable
+        def build_cell_label(row):
+            client = row['client_name']
+            headcount = row['headcount']
+            raw = row.get('booking_reference', '') or ''
+            label = client
+            if headcount and headcount > 1:
+                label = f"{client} ({headcount})"
+            # Check for laptop/device mentions in raw reference
+            laptop_match = re.search(r'(\d+)\s*(?:laptops?|devices?)', raw, re.IGNORECASE)
+            if laptop_match:
+                laptop_count = laptop_match.group(1)
+                label += f" [{laptop_count}L]"
+            return label
+
+        df['cell_label'] = df.apply(build_cell_label, axis=1)
+
+        # Pivot: rows = dates, columns = rooms, values = cell labels
         pivot = df.pivot_table(
             index='booking_date',
             columns='room_name',
-            values='client_name',
+            values='cell_label',
             aggfunc=lambda x: ', '.join(sorted(set(x)))
         )
 
@@ -182,7 +201,7 @@ def render_calendar_view():
         pivot = pivot.reindex(all_dates)
         pivot.index = pivot.index.date
 
-        # Reorder columns to match room_order, drop missing
+        # Reorder columns to match room_order, only include rooms that exist
         ordered_cols = [r for r in room_order if r in pivot.columns]
         pivot = pivot[ordered_cols]
 
