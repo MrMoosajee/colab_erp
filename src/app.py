@@ -11,7 +11,7 @@ import src.auth as auth
 import time
 
 # Page Config
-st.set_page_config(page_title="Colab ERP v2.1.1", layout="wide")
+st.set_page_config(page_title="Colab ERP v2.2.0", layout="wide")
 
 # ----------------------------------------------------------------------------
 # AUTHENTICATION
@@ -51,7 +51,7 @@ def check_login(username, password):
         # Any other DB/auth error — fall back to secrets.toml
         pass
 
-    # --- Attempt 2: secrets.toml fallback (v2.1.1 legacy) ---
+    # --- Attempt 2: secrets.toml fallback (v2.2.0 legacy) ---
     try:
         admin_user = st.secrets["auth"]["admin_user"]
         admin_pass = st.secrets["auth"]["admin_password"]
@@ -91,7 +91,7 @@ def logout():
 
 def render_login():
     st.title("🔐 Colab ERP Access")
-    st.caption("v2.1.1 Production | Unauthorized Access Prohibited")
+    st.caption("v2.2.0 Production | Unauthorized Access Prohibited")
     with st.form("login_form"):
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
@@ -216,7 +216,7 @@ def main():
         render_login()
         return
 
-    st.sidebar.title("Colab ERP v2.1.1")
+    st.sidebar.title("Colab ERP v2.2.0")
     st.sidebar.caption(f"User: {st.session_state['username']} ({st.session_state['role']})")
     st.sidebar.info("System Status: 🟢 Online (Headless)")
 
