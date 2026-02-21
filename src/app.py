@@ -109,35 +109,53 @@ def render_calendar_view():
     import pandas as pd
     from datetime import datetime, timedelta
 
-    # --- Week Navigation ---
+    # --- Navigation State ---
     if 'calendar_week_offset' not in st.session_state:
         st.session_state['calendar_week_offset'] = 0
+    if 'calendar_month_offset' not in st.session_state:
+        st.session_state['calendar_month_offset'] = 0
 
-    nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1, 1, 1, 1])
-    with nav_col1:
-        if st.button("◀ Previous Week"):
-            st.session_state['calendar_week_offset'] -= 1
-            st.rerun()
-    with nav_col2:
-        if st.button("Today"):
-            st.session_state['calendar_week_offset'] = 0
-            st.rerun()
-    with nav_col3:
-        if st.button("Next Week ▶"):
-            st.session_state['calendar_week_offset'] += 1
-            st.rerun()
-    with nav_col4:
+    # View mode selector first so buttons adapt
+    view_col, spacer = st.columns([1, 3])
+    with view_col:
         view_mode = st.selectbox("View", ["Weekly", "Monthly"], label_visibility="collapsed")
 
-    # Calculate date range
     today = datetime.now().date()
+
     if view_mode == "Weekly":
+        nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 1])
+        with nav_col1:
+            if st.button("◀ Previous Week"):
+                st.session_state['calendar_week_offset'] -= 1
+                st.rerun()
+        with nav_col2:
+            if st.button("This Week"):
+                st.session_state['calendar_week_offset'] = 0
+                st.rerun()
+        with nav_col3:
+            if st.button("Next Week ▶"):
+                st.session_state['calendar_week_offset'] += 1
+                st.rerun()
+
         week_start = today - timedelta(days=today.weekday()) + timedelta(weeks=st.session_state['calendar_week_offset'])
         week_end = week_start + timedelta(days=6)
         st.subheader(f"{week_start.strftime('%d %B %Y')} — {week_end.strftime('%d %B %Y')}")
     else:
-        month_offset = st.session_state['calendar_week_offset']
-        month = today.month + month_offset
+        nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 1])
+        with nav_col1:
+            if st.button("◀ Previous Month"):
+                st.session_state['calendar_month_offset'] -= 1
+                st.rerun()
+        with nav_col2:
+            if st.button("This Month"):
+                st.session_state['calendar_month_offset'] = 0
+                st.rerun()
+        with nav_col3:
+            if st.button("Next Month ▶"):
+                st.session_state['calendar_month_offset'] += 1
+                st.rerun()
+
+        month = today.month + st.session_state['calendar_month_offset']
         year = today.year
         while month > 12:
             month -= 12
