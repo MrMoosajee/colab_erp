@@ -196,16 +196,14 @@ def render_calendar_view():
             aggfunc=lambda x: ', '.join(sorted(set(x)))
         )
 
-        # Only include dates that have bookings
+        # Build full date range (include empty days)
+        all_dates = pd.date_range(start=week_start, end=week_end, freq='D')
+        pivot = pivot.reindex(all_dates)
         pivot.index = pivot.index.date
 
-        # Reorder columns to match room_order, only include rooms with data
+        # Reorder columns to match room_order, only include rooms that exist
         ordered_cols = [r for r in room_order if r in pivot.columns]
         pivot = pivot[ordered_cols]
-
-        # Drop columns that are entirely empty
-        pivot = pivot.loc[:, pivot.any()]
-        ordered_cols = [c for c in ordered_cols if c in pivot.columns]
 
         # Add Day column
         pivot.insert(0, 'Day', [datetime.combine(d, datetime.min.time()).strftime('%a') for d in pivot.index])
@@ -231,15 +229,11 @@ def render_calendar_view():
         for col in ordered_cols:
             col_config[col] = st.column_config.TextColumn(col, width=200)
 
-        # Dynamic height: header + rows, min 200, max 900
-        row_height = 35
-        dynamic_height = min(900, max(200, 60 + len(pivot) * row_height))
-
         st.dataframe(
             styled,
             column_config=col_config,
             use_container_width=False,
-            height=dynamic_height,
+            height=800,
             hide_index=False,
         )
 
