@@ -211,14 +211,14 @@ def render_calendar_view():
         # Fill NaN with empty string
         pivot = pivot.fillna("")
 
-        # Style weekends and today
+        # Style calendar rows
         def style_calendar(row):
             date = row.name
             day_of_week = datetime.combine(date, datetime.min.time()).weekday()
             if date == today:
                 return ['background-color: #1a3a2a; color: #4ade80; font-weight: bold'] * len(row)
             elif day_of_week >= 5:
-                return ['background-color: #1a1a2e; color: #666'] * len(row)
+                return ['background-color: #2a1a3a; color: #c084fc'] * len(row)
             else:
                 return [''] * len(row)
 
