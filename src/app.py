@@ -196,7 +196,7 @@ def render_calendar_view():
             aggfunc=lambda x: ', '.join(sorted(set(x)))
         )
 
-        # Build full date range (include empty days)
+        # Build full date range, convert index safely via DatetimeIndex
         all_dates = pd.date_range(start=week_start, end=week_end, freq='D')
         pivot = pivot.reindex(all_dates)
         pivot.index = pivot.index.date
@@ -205,11 +205,23 @@ def render_calendar_view():
         ordered_cols = [r for r in room_order if r in pivot.columns]
         pivot = pivot[ordered_cols]
 
-        # Add Day column
-        pivot.insert(0, 'Day', [datetime.combine(d, datetime.min.time()).strftime('%a') for d in pivot.index])
-
         # Fill NaN with empty string
         pivot = pivot.fillna("")
+
+        # Drop columns that are entirely empty for this period
+        non_empty_cols = [c for c in ordered_cols if (pivot[c] != "").any()]
+        pivot = pivot[non_empty_cols]
+
+        # Drop rows (dates) with no bookings at all
+        has_data = pivot.apply(lambda row: (row != "").any(), axis=1)
+        pivot = pivot[has_data]
+
+        if pivot.empty:
+            st.info("No bookings for this period.")
+            return
+
+        # Add Day column
+        pivot.insert(0, 'Day', [datetime.combine(d, datetime.min.time()).strftime('%a') for d in pivot.index])
 
         # Style calendar rows
         def style_calendar(row):
@@ -226,14 +238,18 @@ def render_calendar_view():
 
         # Column config: Day column narrow, room columns wide enough for full text
         col_config = {"Day": st.column_config.TextColumn("Day", width=60)}
-        for col in ordered_cols:
+        for col in non_empty_cols:
             col_config[col] = st.column_config.TextColumn(col, width=200)
+
+        # Dynamic height based on row count
+        row_height = 35
+        dynamic_height = min(900, max(200, 60 + len(pivot) * row_height))
 
         st.dataframe(
             styled,
             column_config=col_config,
             use_container_width=False,
-            height=800,
+            height=dynamic_height,
             hide_index=False,
         )
 
