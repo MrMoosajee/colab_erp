@@ -223,7 +223,19 @@ def render_calendar_view():
                 return [''] * len(row)
 
         styled = pivot.style.apply(style_calendar, axis=1)
-        st.dataframe(styled, use_container_width=True, height=600)
+
+        # Column config: Day column narrow, room columns wide enough for full text
+        col_config = {"Day": st.column_config.TextColumn("Day", width=60)}
+        for col in ordered_cols:
+            col_config[col] = st.column_config.TextColumn(col, width=200)
+
+        st.dataframe(
+            styled,
+            column_config=col_config,
+            use_container_width=False,
+            height=800,
+            hide_index=False,
+        )
 
     except ConnectionError as e:
         st.error(f"🚨 CRITICAL: Database unreachable: {e}")
