@@ -81,8 +81,8 @@ def render_calendar_view():
     """
     st.header("📅 Room Booking Calendar")
     
-    # DEBUG: Start of function
-    st.write("DEBUG: Starting render_calendar_view()")
+    # DEBUG: Start of function (commented out for production)
+    # st.write("DEBUG: Starting render_calendar_view()")
     
     # Initialize calendar state
     if 'calendar_view_mode' not in st.session_state:
@@ -92,9 +92,9 @@ def render_calendar_view():
     if 'calendar_month_offset' not in st.session_state:
         st.session_state.calendar_month_offset = 0
     
-    # DEBUG: Show current state
-    st.write(f"DEBUG: View mode = {st.session_state.calendar_view_mode}")
-    st.write(f"DEBUG: Week offset = {st.session_state.calendar_week_offset}")
+    # DEBUG: Show current state (commented out for production)
+    # st.write(f"DEBUG: View mode = {st.session_state.calendar_view_mode}")
+    # st.write(f"DEBUG: Week offset = {st.session_state.calendar_week_offset}")
     
     # View mode toggle and navigation
     col1, col2, col3, col4 = st.columns([1, 1, 2, 2])
@@ -131,12 +131,12 @@ def render_calendar_view():
     
     # Calculate date range
     today = date.today()
-    st.write(f"DEBUG: Today = {today}")
+    # st.write(f"DEBUG: Today = {today}")
     
     # Fetch rooms first (needed for both views)
     try:
         rooms_df = db.get_rooms_for_calendar()
-        st.write(f"DEBUG: Found {len(rooms_df)} rooms")
+        # st.write(f"DEBUG: Found {len(rooms_df)} rooms")
         
         if rooms_df.empty:
             st.warning("No rooms found.")
@@ -163,36 +163,20 @@ def render_week_view(today, rooms_df):
     
     st.subheader(f"Week of {week_start.strftime('%d %b %Y')} - {week_end.strftime('%d %b %Y')}")
     
-    st.write(f"DEBUG: Week start = {week_start}, end = {week_end}")
+    # st.write(f"DEBUG: Week start = {week_start}, end = {week_end}")
     
     # Fetch calendar data
     calendar_df = db.get_calendar_grid(week_start, week_end)
-    st.write(f"DEBUG: Calendar query returned {len(calendar_df)} rows")
+    # st.write(f"DEBUG: Calendar query returned {len(calendar_df)} rows")
     
-    # DEBUG: Show sample data
+    # Process data
     if not calendar_df.empty:
-        st.write("DEBUG: Sample data (first 5 rows):")
-        st.dataframe(calendar_df.head())
-        
         # Convert booking_date to date for comparison
-        st.write(f"DEBUG: Original booking_date dtype: {calendar_df['booking_date'].dtype}")
         calendar_df['booking_date'] = pd.to_datetime(calendar_df['booking_date']).dt.date
-        st.write(f"DEBUG: Converted booking_date dtype: {calendar_df['booking_date'].dtype}")
-        st.write("DEBUG: Unique booking_dates:", calendar_df['booking_date'].unique()[:7])
-        
-        # Check for bookings on specific dates
-        st.write(f"DEBUG: Looking for bookings on {week_start}:")
-        test_date = calendar_df[calendar_df['booking_date'] == week_start]
-        st.write(f"DEBUG: Found {len(test_date)} rows for {week_start}")
-        if not test_date.empty:
-            st.write("DEBUG: Sample bookings for that date:")
-            st.dataframe(test_date[['room_name', 'client_name', 'booking_date']].head())
-    else:
-        st.warning("DEBUG: calendar_df is EMPTY!")
     
     # Create calendar grid - ROOMS as columns
     num_rooms = len(rooms_df)
-    st.write(f"DEBUG: Creating grid with {num_rooms} room columns")
+    # st.write(f"DEBUG: Creating grid with {num_rooms} room columns")
     
     # Header row - Room names as columns
     header_cols = st.columns([1] + [1] * num_rooms)  # Day column + room columns
@@ -212,7 +196,7 @@ def render_week_view(today, rooms_df):
         is_weekend = day_idx >= 5  # Sat=5, Sun=6
         is_today = current_date == today
         
-        st.write(f"DEBUG: Processing {day_name} ({current_date})")
+        # st.write(f"DEBUG: Processing {day_name} ({current_date})")
         
         # Create row with day name + room cells
         row_cols = st.columns([1] + [1] * num_rooms)
@@ -246,21 +230,21 @@ def render_week_view(today, rooms_df):
                 (calendar_df['booking_date'] == current_date)
             ]
             
-            st.write(f"DEBUG: Room {room_name} (ID:{room_id}) on {current_date} - Found {len(booking)} bookings")
+            # st.write(f"DEBUG: Room {room_name} (ID:{room_id}) on {current_date} - Found {len(booking)} bookings")
             
             if not booking.empty and pd.notna(booking.iloc[0]['booking_id']):
                 # Has booking
                 client = booking.iloc[0]['client_name']
                 devices = int(booking.iloc[0]['device_count']) if pd.notna(booking.iloc[0]['device_count']) else 0
                 
-                st.write(f"DEBUG: Booking found - Client: {client}, Devices: {devices}")
+                # st.write(f"DEBUG: Booking found - Client: {client}, Devices: {devices}")
                 
                 # Cell content
                 cell_text = f"<b>{client[:12]}</b>"
                 if devices > 0:
                     cell_text += f"<br/>💻{devices}"
                 
-                # Cell styling
+                # Cell styling with BLACK text
                 if is_today:
                     bg_color = "#d4edda"  # Light green
                     border = "2px solid #28a745"
@@ -272,7 +256,7 @@ def render_week_view(today, rooms_df):
                     border = "1px solid #90caf9"
                 
                 row_cols[room_idx + 1].markdown(
-                    f"<div style='background-color: {bg_color}; border: {border}; padding: 4px; border-radius: 4px; font-size: 9px; min-height: 45px; text-align: center;'>"
+                    f"<div style='background-color: {bg_color}; border: {border}; padding: 4px; border-radius: 4px; font-size: 9px; min-height: 45px; text-align: center; color: black;'>"
                     f"{cell_text}</div>",
                     unsafe_allow_html=True
                 )
@@ -316,11 +300,11 @@ def render_month_view(today, rooms_df):
     month_end = next_month - timedelta(days=1)
     
     st.subheader(f"{current_month.strftime('%B %Y')}")
-    st.write(f"DEBUG: Month view - {month_start} to {month_end}")
+    # st.write(f"DEBUG: Month view - {month_start} to {month_end}")
     
     # Fetch calendar data for entire month
     calendar_df = db.get_calendar_grid(month_start, month_end)
-    st.write(f"DEBUG: Month query returned {len(calendar_df)} rows")
+    # st.write(f"DEBUG: Month query returned {len(calendar_df)} rows")
     
     num_rooms = len(rooms_df)
     
@@ -395,7 +379,7 @@ def render_month_view(today, rooms_df):
                     border = "1px solid #90caf9"
                 
                 row_cols[room_idx + 1].markdown(
-                    f"<div style='background-color: {bg_color}; border: {border}; padding: 3px; border-radius: 4px; font-size: 8px; min-height: 40px; text-align: center;'>"
+                    f"<div style='background-color: {bg_color}; border: {border}; padding: 3px; border-radius: 4px; font-size: 8px; min-height: 40px; text-align: center; color: black;'>"
                     f"{cell_text}</div>",
                     unsafe_allow_html=True
                 )
@@ -423,7 +407,7 @@ def render_month_view(today, rooms_df):
             st.warning("Month display limited to 31 days for performance")
             break
     
-    st.write(f"DEBUG: Displayed {day_count} days")
+    # st.write(f"DEBUG: Displayed {day_count} days")
 
 def render_new_booking_form():
     st.header("📝 New Booking Request")
