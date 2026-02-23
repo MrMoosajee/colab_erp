@@ -484,6 +484,25 @@ def render_month_view(today, rooms_df):
     
     # st.write(f"DEBUG: Displayed {day_count} days")
 
+def render_new_room_booking():
+    st.header("📝 New Room Booking")
+
+def render_new_device_booking():
+    st.header("🖥️ New Device Booking")
+    st.info("🚧 Coming Soon - Device booking functionality will be implemented in Phase 3")
+
+def render_pricing_catalog():
+    st.header("💰 Pricing Catalog")
+    st.info("🚧 Coming Soon - Room and device pricing information")
+
+def render_pending_approvals():
+    st.header("⏳ Pending Approvals")
+    st.info("🚧 Coming Soon - Booking approval workflow")
+
+def render_inventory_dashboard():
+    st.header("📦 Inventory Dashboard")
+    st.info("🚧 Coming Soon - Device inventory management")
+
 def render_new_booking_form():
     st.header("📝 New Booking Request")
 
@@ -589,10 +608,12 @@ def main():
 
     # Navigation Logic based on Role
     if st.session_state['role'] == 'admin':
-        menu = ["Dashboard", "Calendar", "New Booking"]
+        menu = ["Dashboard", "Calendar", "New Room Booking", "New Device Booking", 
+                "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
     else:
         # Staff see a limited menu
-        menu = ["Calendar", "New Booking"]
+        menu = ["Calendar", "New Room Booking", "New Device Booking", 
+                "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
 
     choice = st.sidebar.radio("Navigation", menu)
 
@@ -604,8 +625,18 @@ def main():
         render_admin_dashboard()
     elif choice == "Calendar":
         render_calendar_view()
-    elif choice == "New Booking":
+    elif choice == "New Room Booking":
+        render_new_room_booking()
+        # Show the actual booking form below
         render_new_booking_form()
+    elif choice == "New Device Booking":
+        render_new_device_booking()
+    elif choice == "Pricing Catalog":
+        render_pricing_catalog()
+    elif choice == "Pending Approvals":
+        render_pending_approvals()
+    elif choice == "Inventory Dashboard":
+        render_inventory_dashboard()
 
 if __name__ == "__main__":
     main()
