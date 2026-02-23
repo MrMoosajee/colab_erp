@@ -303,19 +303,19 @@ def render_week_view(today, rooms_df):
             if not booking.empty and pd.notna(booking.iloc[0]['booking_id']):
                 # Has booking
                 client = booking.iloc[0]['client_name']
-                learners = int(booking.iloc[0]['learners_count']) if pd.notna(booking.iloc[0]['learners_count']) else 0
-                # Facilitators: minimum 1, never 0
-                facilitators_raw = booking.iloc[0]['facilitators_count']
-                if pd.isna(facilitators_raw) or facilitators_raw < 1:
-                    facilitators = 1
-                else:
-                    facilitators = int(facilitators_raw)
-                devices = int(booking.iloc[0]['device_count']) if pd.notna(booking.iloc[0]['device_count']) else 0
                 
-                # Cell content: Client<br/>Learners+Facilitators (+ Devices)
-                cell_text = f"<b>{client}</b><br/>{learners}+{facilitators}"
-                if devices > 0:
-                    cell_text += f" (+ {devices})"
+                # Long-term offices: show client name only (no headcount)
+                if room_name in ['A302', 'A303', 'Vision']:
+                    cell_text = f"<b>{client}</b>"
+                else:
+                    # Normal rooms with headcount
+                    learners = int(booking.iloc[0]['learners_count']) if pd.notna(booking.iloc[0]['learners_count']) else 0
+                    devices = int(booking.iloc[0]['device_count']) if pd.notna(booking.iloc[0]['device_count']) else 0
+                    
+                    # Excel format: learners + 1 facilitator (always minimum 1)
+                    cell_text = f"<b>{client}</b><br/>{learners}+1"
+                    if devices > 0:
+                        cell_text += f" (+ {devices})"
                 
                 # Cell styling
                 if is_today:
@@ -428,11 +428,20 @@ def render_month_view(today, rooms_df):
             
             if not booking.empty and pd.notna(booking.iloc[0]['booking_id']):
                 client = booking.iloc[0]['client_name']
-                devices = int(booking.iloc[0]['device_count']) if pd.notna(booking.iloc[0]['device_count']) else 0
+                room_name = room['name']
                 
-                cell_text = f"<b>{client[:10]}</b>"
-                if devices > 0:
-                    cell_text += f"<br/>💻{devices}"
+                # Long-term offices: show client name only (no headcount)
+                if room_name in ['A302', 'A303', 'Vision']:
+                    cell_text = f"<b>{client[:10]}</b>"
+                else:
+                    # Normal rooms with headcount
+                    learners = int(booking.iloc[0]['learners_count']) if pd.notna(booking.iloc[0]['learners_count']) else 0
+                    devices = int(booking.iloc[0]['device_count']) if pd.notna(booking.iloc[0]['device_count']) else 0
+                    
+                    # Excel format: learners + 1 facilitator
+                    cell_text = f"<b>{client[:10]}</b><br/>{learners}+1"
+                    if devices > 0:
+                        cell_text += f" (+ {devices})"
                 
                 if is_today:
                     bg_color = "#d4edda"
