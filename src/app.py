@@ -211,6 +211,7 @@ def render_week_view(today, rooms_df):
         text-align: center;
         vertical-align: middle;
         background-color: #f5f5f5;
+        color: black;
         box-sizing: border-box;
     }
     .day-cell {
@@ -223,6 +224,7 @@ def render_week_view(today, rooms_df):
         font-weight: bold;
         text-align: center;
         vertical-align: middle;
+        color: black;
         box-sizing: border-box;
     }
     .day-header {
@@ -236,6 +238,7 @@ def render_week_view(today, rooms_df):
         text-align: center;
         vertical-align: middle;
         background-color: #e3f2fd;
+        color: black;
         box-sizing: border-box;
     }
     .calendar-row {
@@ -295,7 +298,12 @@ def render_week_view(today, rooms_df):
                 # Has booking
                 client = booking.iloc[0]['client_name']
                 learners = int(booking.iloc[0]['learners_count']) if pd.notna(booking.iloc[0]['learners_count']) else 0
-                facilitators = int(booking.iloc[0]['facilitators_count']) if pd.notna(booking.iloc[0]['facilitators_count']) else 1
+                # Facilitators: minimum 1, never 0
+                facilitators_raw = booking.iloc[0]['facilitators_count']
+                if pd.isna(facilitators_raw) or facilitators_raw < 1:
+                    facilitators = 1
+                else:
+                    facilitators = int(facilitators_raw)
                 devices = int(booking.iloc[0]['device_count']) if pd.notna(booking.iloc[0]['device_count']) else 0
                 
                 # Cell content: Client<br/>Learners+Facilitators (+ Devices)
@@ -332,10 +340,10 @@ def render_week_view(today, rooms_df):
     # Legend
     st.markdown("---")
     legend_cols = st.columns(4)
-    legend_cols[0].markdown("<div style='background-color: #28a745; padding: 5px; border-radius: 4px; color: white; text-align: center; font-size: 12px;'>🟢 Today</div>", unsafe_allow_html=True)
-    legend_cols[1].markdown("<div style='background-color: #6f42c1; padding: 5px; border-radius: 4px; color: white; text-align: center; font-size: 12px;'>🟣 Weekend</div>", unsafe_allow_html=True)
-    legend_cols[2].markdown("<div style='background-color: #e3f2fd; padding: 5px; border-radius: 4px; text-align: center; font-size: 12px;'>🔵 Weekday</div>", unsafe_allow_html=True)
-    legend_cols[3].markdown("<div style='background-color: #d4edda; padding: 5px; border-radius: 4px; text-align: center; font-size: 12px;'>📅 Booked</div>", unsafe_allow_html=True)
+    legend_cols[0].markdown("<div style='background-color: #28a745; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>🟢 Today</div>", unsafe_allow_html=True)
+    legend_cols[1].markdown("<div style='background-color: #6f42c1; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>🟣 Weekend</div>", unsafe_allow_html=True)
+    legend_cols[2].markdown("<div style='background-color: #e3f2fd; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>🔵 Weekday</div>", unsafe_allow_html=True)
+    legend_cols[3].markdown("<div style='background-color: #d4edda; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>📅 Booked</div>", unsafe_allow_html=True)
 
 def render_month_view(today, rooms_df):
     """Render month view with days as rows, rooms as columns"""
