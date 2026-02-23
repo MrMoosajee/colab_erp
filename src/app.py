@@ -173,7 +173,20 @@ def render_week_view(today, rooms_df):
     if not calendar_df.empty:
         st.write("DEBUG: Sample data (first 5 rows):")
         st.dataframe(calendar_df.head())
-        st.write("DEBUG: Unique booking_dates:", calendar_df['booking_date'].unique()[:5])
+        
+        # Convert booking_date to date for comparison
+        st.write(f"DEBUG: Original booking_date dtype: {calendar_df['booking_date'].dtype}")
+        calendar_df['booking_date'] = pd.to_datetime(calendar_df['booking_date']).dt.date
+        st.write(f"DEBUG: Converted booking_date dtype: {calendar_df['booking_date'].dtype}")
+        st.write("DEBUG: Unique booking_dates:", calendar_df['booking_date'].unique()[:7])
+        
+        # Check for bookings on specific dates
+        st.write(f"DEBUG: Looking for bookings on {week_start}:")
+        test_date = calendar_df[calendar_df['booking_date'] == week_start]
+        st.write(f"DEBUG: Found {len(test_date)} rows for {week_start}")
+        if not test_date.empty:
+            st.write("DEBUG: Sample bookings for that date:")
+            st.dataframe(test_date[['room_name', 'client_name', 'booking_date']].head())
     else:
         st.warning("DEBUG: calendar_df is EMPTY!")
     
@@ -227,9 +240,10 @@ def render_week_view(today, rooms_df):
             room_name = room['name']
             
             # Find booking for this room and date
+            # Note: calendar_df['booking_date'] is now a date object (not Timestamp)
             booking = calendar_df[
                 (calendar_df['room_id'] == room_id) & 
-                (calendar_df['booking_date'] == pd.Timestamp(current_date))
+                (calendar_df['booking_date'] == current_date)
             ]
             
             st.write(f"DEBUG: Room {room_name} (ID:{room_id}) on {current_date} - Found {len(booking)} bookings")
@@ -353,9 +367,13 @@ def render_month_view(today, rooms_df):
         for room_idx, (_, room) in enumerate(rooms_df.iterrows()):
             room_id = room['id']
             
+            # Convert booking_date to date for month view too (only once)
+            if 'booking_date' in calendar_df.columns and not pd.api.types.is_datetime64_any_dtype(calendar_df['booking_date']):
+                calendar_df['booking_date'] = pd.to_datetime(calendar_df['booking_date']).dt.date
+            
             booking = calendar_df[
                 (calendar_df['room_id'] == room_id) & 
-                (calendar_df['booking_date'] == pd.Timestamp(current_date))
+                (calendar_df['booking_date'] == current_date)
             ]
             
             if not booking.empty and pd.notna(booking.iloc[0]['booking_id']):

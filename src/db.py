@@ -213,7 +213,17 @@ def get_calendar_grid(start_date, end_date):
         SELECT * FROM expanded_bookings
         ORDER BY room_name, booking_date;
     """
-    return run_query(sql, (start_date, end_date))
+    df = run_query(sql, (start_date, end_date))
+    
+    # DEBUG: Log the query results
+    import streamlit as st
+    st.write(f"DEBUG DB: Query returned {len(df)} rows")
+    if not df.empty:
+        st.write(f"DEBUG DB: Columns: {df.columns.tolist()}")
+        st.write(f"DEBUG DB: booking_date dtype: {df['booking_date'].dtype}")
+        st.write(f"DEBUG DB: Sample booking_date values: {df['booking_date'].head().tolist()}")
+    
+    return df
 
 def get_rooms_for_calendar():
     """
