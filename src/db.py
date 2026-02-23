@@ -172,6 +172,87 @@ def get_calendar_bookings(days_lookback=30):
           """
     return run_query(sql, (days_lookback,))
 
+def get_calendar_grid(start_date, end_date):
+    """
+    Fetches bookings for calendar grid view with device counts.
+    Returns bookings expanded across all days in their date range.
+    
+    Args:
+        start_date: Start of date range (datetime.date)
+        end_date: End of date range (datetime.date)
+    
+    Returns:
+        DataFrame with columns:
+        - room_id, room_name, booking_date, booking_id
+        - client_name, headcount, device_count, status, tenant_id
+    """
+    sql = """
+        WITH date_range AS (
+            SELECT generate_series(%s::date, %s::date, '1 day'::interval)::date AS booking_date
+        ),
+        expanded_bookings AS (
+            SELECT 
+                r.id as room_id,
+                r.name as room_name,
+                dr.booking_date,
+                b.id as booking_id,
+                b.client_name,
+                b.headcount,
+                b.status,
+                b.tenant_id,
+                COUNT(bda.device_id) as device_count
+            FROM date_range dr
+            CROSS JOIN rooms r
+            LEFT JOIN bookings b ON b.room_id = r.id 
+                AND dr.booking_date BETWEEN DATE(lower(b.booking_period)) AND DATE(upper(b.booking_period))
+                AND b.status != 'Cancelled'
+            LEFT JOIN booking_device_assignments bda ON b.id = bda.booking_id
+            WHERE r.is_active = true
+            GROUP BY r.id, r.name, dr.booking_date, b.id, b.client_name, b.headcount, b.status, b.tenant_id
+        )
+        SELECT * FROM expanded_bookings
+        ORDER BY room_name, booking_date;
+    """
+    return run_query(sql, (start_date, end_date))
+
+def get_rooms_for_calendar():
+    """
+    Fetches active rooms ordered for calendar display.
+    """
+    sql = """
+        SELECT id, name, max_capacity
+        FROM rooms
+        WHERE is_active = true
+        ORDER BY 
+            CASE 
+                WHEN name = 'Excellence' THEN 1
+                WHEN name = 'Inspiration' THEN 2
+                WHEN name = 'Honesty' THEN 3
+                WHEN name = 'Gratitude' THEN 4
+                WHEN name = 'Ambition' THEN 5
+                WHEN name = 'Perseverence' THEN 6
+                WHEN name = 'Courage' THEN 7
+                WHEN name = 'Possibilities' THEN 8
+                WHEN name = 'Motivation' THEN 9
+                WHEN name = 'A302' THEN 10
+                WHEN name = 'A303' THEN 11
+                WHEN name = 'Success' THEN 12
+                WHEN name = 'Respect' THEN 13
+                WHEN name = 'Innovation' THEN 14
+                WHEN name = 'Dedication' THEN 15
+                WHEN name = 'Integrity' THEN 16
+                WHEN name = 'Empower' THEN 17
+                WHEN name = 'Focus' THEN 18
+                WHEN name = 'Growth' THEN 19
+                WHEN name = 'Wisdom' THEN 20
+                WHEN name = 'Vision' THEN 21
+                WHEN name = 'Potential' THEN 22
+                WHEN name = 'Synergy' THEN 23
+                WHEN name = 'Ambition+Perseverence' THEN 24
+                ELSE 25
+            END;
+    """
+    return run_query(sql)
 def get_dashboard_stats(tenant_filter=None):
     """
     Calculates KPIs for the Admin Dashboard.
