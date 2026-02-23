@@ -9,6 +9,8 @@ import streamlit as st
 import src.db as db
 import src.auth as auth
 import time
+import pandas as pd
+from datetime import datetime, timedelta, date
 
 # Page Config
 st.set_page_config(page_title="Colab ERP v2.2.0", layout="wide")
@@ -73,18 +75,203 @@ def render_login():
 # ----------------------------------------------------------------------------
 
 def render_calendar_view():
+    """
+    Professional Calendar Grid View - Week/Month toggle with color coding
+    """
     st.header("📅 Room Booking Calendar")
-    try:
-        df = db.get_calendar_bookings()
-        if not df.empty:
-            st.dataframe(df, use_container_width=True)
+    
+    # Initialize calendar state
+    if 'calendar_view_mode' not in st.session_state:
+        st.session_state.calendar_view_mode = "Week"
+    if 'calendar_week_offset' not in st.session_state:
+        st.session_state.calendar_week_offset = 0
+    if 'calendar_month_offset' not in st.session_state:
+        st.session_state.calendar_month_offset = 0
+    
+    # View mode toggle and navigation
+    col1, col2, col3, col4 = st.columns([1, 1, 2, 2])
+    
+    with col1:
+        if st.button("← Prev", key="prev_period"):
+            if st.session_state.calendar_view_mode == "Week":
+                st.session_state.calendar_week_offset -= 1
+            else:
+                st.session_state.calendar_month_offset -= 1
+            st.rerun()
+    
+    with col2:
+        if st.button("Next →", key="next_period"):
+            if st.session_state.calendar_view_mode == "Week":
+                st.session_state.calendar_week_offset += 1
+            else:
+                st.session_state.calendar_month_offset += 1
+            st.rerun()
+    
+    with col3:
+        view_mode = st.segmented_control("View", ["Week", "Month"], 
+                                        default=st.session_state.calendar_view_mode,
+                                        key="view_mode_selector")
+        if view_mode != st.session_state.calendar_view_mode:
+            st.session_state.calendar_view_mode = view_mode
+            st.rerun()
+    
+    with col4:
+        if st.button("📅 Today", key="go_today"):
+            st.session_state.calendar_week_offset = 0
+            st.session_state.calendar_month_offset = 0
+            st.rerun()
+    
+    # Calculate date range
+    today = date.today()
+    
+    if st.session_state.calendar_view_mode == "Week":
+        # Calculate week start (Monday)
+        week_start = today + timedelta(weeks=st.session_state.calendar_week_offset)
+        week_start = week_start - timedelta(days=week_start.weekday())  # Monday
+        week_end = week_start + timedelta(days=6)  # Sunday
+        
+        st.subheader(f"Week of {week_start.strftime('%d %b %Y')} - {week_end.strftime('%d %b %Y')}")
+        
+        # Fetch calendar data
+        try:
+            calendar_df = db.get_calendar_grid(week_start, week_end)
+            rooms_df = db.get_rooms_for_calendar()
+            
+            if rooms_df.empty:
+                st.warning("No rooms found.")
+                return
+            
+            # Create calendar grid
+            days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            
+            # Header row with dates
+            header_cols = st.columns([1.5] + [1] * 7)  # Room column + 7 days
+            header_cols[0].markdown("**Room**")
+            
+            for i, day in enumerate(days):
+                current_date = week_start + timedelta(days=i)
+                is_weekend = i >= 5  # Sat=5, Sun=6
+                is_today = current_date == today
+                
+                # Day header styling
+                if is_today:
+                    bg_color = "#28a745"  # Green for today
+                    text_color = "white"
+                elif is_weekend:
+                    bg_color = "#6f42c1"  # Purple for weekends
+                    text_color = "white"
+                else:
+                    bg_color = "#e3f2fd"  # Blue-grey for weekdays
+                    text_color = "black"
+                
+                header_cols[i+1].markdown(
+                    f"<div style='background-color: {bg_color}; color: {text_color}; padding: 8px; border-radius: 4px; text-align: center; font-size: 12px;'>"
+                    f"<b>{day}</b><br/>{current_date.strftime('%d')}</div>",
+                    unsafe_allow_html=True
+                )
+            
+            st.markdown("---")
+            
+            # Room rows
+            for _, room in rooms_df.iterrows():
+                room_name = room['name']
+                room_id = room['id']
+                
+                row_cols = st.columns([1.5] + [1] * 7)
+                
+                # Room name
+                row_cols[0].markdown(f"**{room_name}**")
+                
+                # Day cells
+                for i in range(7):
+                    current_date = week_start + timedelta(days=i)
+                    is_weekend = i >= 5
+                    is_today = current_date == today
+                    
+                    # Find booking for this room and date
+                    booking = calendar_df[
+                        (calendar_df['room_id'] == room_id) & 
+                        (calendar_df['booking_date'] == pd.Timestamp(current_date))
+                    ]
+                    
+                    if not booking.empty and pd.notna(booking.iloc[0]['booking_id']):
+                        # Has booking
+                        client = booking.iloc[0]['client_name']
+                        devices = int(booking.iloc[0]['device_count']) if pd.notna(booking.iloc[0]['device_count']) else 0
+                        headcount = int(booking.iloc[0]['headcount']) if pd.notna(booking.iloc[0]['headcount']) else 0
+                        
+                        # Cell content
+                        cell_text = f"<b>{client[:15]}</b>"
+                        if devices > 0:
+                            cell_text += f"<br/>💻 {devices}"
+                        
+                        # Cell styling - booked cells
+                        if is_today:
+                            bg_color = "#d4edda"  # Light green
+                            border = "2px solid #28a745"
+                        elif is_weekend:
+                            bg_color = "#e8d5f2"  # Light purple
+                            border = "2px solid #6f42c1"
+                        else:
+                            bg_color = "#e3f2fd"  # Light blue
+                            border = "1px solid #90caf9"
+                        
+                        row_cols[i+1].markdown(
+                            f"<div style='background-color: {bg_color}; border: {border}; padding: 5px; border-radius: 4px; font-size: 10px; min-height: 50px;'>"
+                            f"{cell_text}</div>",
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        # Empty cell
+                        if is_today:
+                            bg_color = "#d4edda"
+                            border = "2px solid #28a745"
+                        elif is_weekend:
+                            bg_color = "#f3e5f5"  # Very light purple
+                            border = "1px solid #ce93d8"
+                        else:
+                            bg_color = "#f5f5f5"  # Light grey
+                            border = "1px solid #e0e0e0"
+                        
+                        row_cols[i+1].markdown(
+                            f"<div style='background-color: {bg_color}; border: {border}; padding: 5px; border-radius: 4px; min-height: 50px;'></div>",
+                            unsafe_allow_html=True
+                        )
+            
+            # Legend
+            st.markdown("---")
+            legend_cols = st.columns(4)
+            legend_cols[0].markdown("<div style='background-color: #28a745; padding: 5px; border-radius: 4px; color: white; text-align: center;'>Today</div>", unsafe_allow_html=True)
+            legend_cols[1].markdown("<div style='background-color: #6f42c1; padding: 5px; border-radius: 4px; color: white; text-align: center;'>Weekend</div>", unsafe_allow_html=True)
+            legend_cols[2].markdown("<div style='background-color: #e3f2fd; padding: 5px; border-radius: 4px; text-align: center;'>Weekday</div>", unsafe_allow_html=True)
+            legend_cols[3].markdown("<div style='background-color: #d4edda; padding: 5px; border-radius: 4px; text-align: center;'>Booked</div>", unsafe_allow_html=True)
+            
+        except ConnectionError as e:
+            st.error(f"🚨 Database unreachable: {e}")
+        except Exception as e:
+            st.error(f"❌ Error loading calendar: {e}")
+            st.exception(e)
+    
+    else:  # Month view
+        # Calculate month
+        from dateutil.relativedelta import relativedelta
+        
+        current_month = today + relativedelta(months=st.session_state.calendar_month_offset)
+        month_start = current_month.replace(day=1)
+        
+        # Get last day of month
+        if current_month.month == 12:
+            next_month = current_month.replace(year=current_month.year + 1, month=1, day=1)
         else:
-            st.info("No upcoming bookings found.")
-    except ConnectionError as e:
-        st.error(f"🚨 CRITICAL: Database unreachable: {e}")
-        st.info("Fix: verify Tailscale is up, the secrets.toml host IP is correct, and PostgreSQL is listening on the VPN interface.")
-    except Exception as e:
-        st.error(f"❌ Database Error: Unable to fetch calendar bookings: {e}")
+            next_month = current_month.replace(month=current_month.month + 1, day=1)
+        month_end = next_month - timedelta(days=1)
+        
+        st.subheader(current_month.strftime("%B %Y"))
+        st.info("Month view coming soon - showing week view for now")
+        
+        # Fallback to week view for now
+        st.session_state.calendar_view_mode = "Week"
+        st.rerun()
 
 def render_new_booking_form():
     st.header("📝 New Booking Request")
