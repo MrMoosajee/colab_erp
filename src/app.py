@@ -12,8 +12,14 @@ import time
 import pandas as pd
 from datetime import datetime, timedelta, date
 
+# Import Device Manager
+from src.models import DeviceManager
+
 # Page Config
 st.set_page_config(page_title="Colab ERP v2.2.0", layout="wide")
+
+# Initialize Device Manager
+device_manager = DeviceManager()
 
 # ----------------------------------------------------------------------------
 # AUTHENTICATION
@@ -583,6 +589,428 @@ def render_inventory_dashboard():
     st.header("📦 Inventory Dashboard")
     st.info("🚧 Coming Soon - Device inventory management")
 
+def render_device_assignment_queue():
+    """
+    IT Staff Device Assignment Interface
+    Manual assignment with full tracking and conflict detection
+    """
+    st.header("🔧 Device Assignment Queue")
+    
+    # Initialize session state for this view
+    if 'assignment_filter' not in st.session_state:
+        st.session_state.assignment_filter = "Pending"
+    
+    # Filter tabs
+    filter_tabs = st.tabs(["Pending", "Off-site Requests", "Conflicts", "All"])
+    
+    with filter_tabs[0]:
+        render_pending_assignments()
+    
+    with filter_tabs[1]:
+        render_offsite_requests()
+    
+    with filter_tabs[2]:
+        render_conflicts()
+    
+    with filter_tabs[3]:
+        render_all_assignments()
+
+def render_pending_assignments():
+    """Show bookings with pending device requests"""
+    st.subheader("📋 Pending Device Requests")
+    
+    try:
+        # Get bookings with device requests but no assignments
+        query = """
+            SELECT 
+                b.id as booking_id,
+                b.client_name,
+                b.learners_count,
+                r.name as room_name,
+                lower(b.booking_period)::date as start_date,
+                upper(b.booking_period)::date as end_date,
+                dc.name as device_category,
+                bda.quantity as requested_quantity,
+                bda.id as request_id
+            FROM bookings b
+            JOIN rooms r ON b.room_id = r.id
+            JOIN booking_device_assignments bda ON b.id = bda.booking_id
+            JOIN device_categories dc ON bda.device_category_id = dc.id
+            WHERE b.status = 'confirmed'
+            AND bda.device_id IS NULL
+            AND lower(b.booking_period) >= CURRENT_DATE
+            ORDER BY lower(b.booking_period)
+        """
+        
+        pending_df = db.run_query(query)
+        
+        if pending_df.empty:
+            st.info("No pending device requests.")
+            return
+        
+        st.write(f"Found {len(pending_df)} pending requests")
+        
+        # Group by booking
+        for booking_id in pending_df['booking_id'].unique():
+            booking_requests = pending_df[pending_df['booking_id'] == booking_id]
+            first = booking_requests.iloc[0]
+            
+            with st.expander(
+                f"📋 Booking #{booking_id} - {first['client_name']} ({first['room_name']}) "
+                f"| {first['start_date']} to {first['end_date']}"
+            ):
+                st.write(f"**Client:** {first['client_name']}")
+                st.write(f"**Room:** {first['room_name']}")
+                st.write(f"**Dates:** {first['start_date']} to {first['end_date']}")
+                st.write(f"**Learners:** {first['learners_count']}")
+                
+                # Show each device request
+                for _, request in booking_requests.iterrows():
+                    st.divider()
+                    st.write(f"**Device Request:** {request['requested_quantity']}x {request['device_category']}")
+                    
+                    # Get available devices
+                    available = device_manager.get_available_devices(
+                        request['device_category'],
+                        request['start_date'],
+                        request['end_date']
+                    )
+                    
+                    if available.empty:
+                        st.error(f"⚠️ No {request['device_category']}s available!")
+                        if st.button(f"Notify Bosses - No Stock", key=f"notify_{request['request_id']}"):
+                            st.info("📢 Notification sent to IT Boss and Room Boss")
+                    else:
+                        st.write(f"✅ {len(available)} {request['device_category']}s available")
+                        
+                        # Multi-select by serial number only
+                        selected_serials = st.multiselect(
+                            f"Select {request['device_category']}s (Serial Numbers)",
+                            options=available['serial_number'].tolist(),
+                            key=f"select_{request['request_id']}"
+                        )
+                        
+                        # Off-site option
+                        is_offsite = st.checkbox(
+                            "Off-site Rental",
+                            key=f"offsite_{request['request_id']}"
+                        )
+                        
+                        # Off-site form
+                        if is_offsite:
+                            with st.form(key=f"offsite_form_{request['request_id']}"):
+                                st.write("**Off-site Details:**")
+                                rental_no = st.text_input("Rental No", key=f"rental_no_{request['request_id']}")
+                                rental_date = st.date_input("Rental Date", value=request['start_date'], key=f"rental_date_{request['request_id']}")
+                                contact_person = st.text_input("Contact Person", key=f"contact_{request['request_id']}")
+                                contact_number = st.text_input("Contact Number", key=f"phone_{request['request_id']}")
+                                contact_email = st.text_input("Email (optional)", key=f"email_{request['request_id']}")
+                                company = st.text_input("Company", key=f"company_{request['request_id']}")
+                                address = st.text_area("Address", key=f"address_{request['request_id']}")
+                                return_date = st.date_input("Expected Return Date", value=request['end_date'], key=f"return_{request['request_id']}")
+                                
+                                submitted = st.form_submit_button("Assign with Off-site Details")
+                                
+                                if submitted and selected_serials:
+                                    # Assign devices
+                                    for serial in selected_serials:
+                                        device_row = available[available['serial_number'] == serial]
+                                        if not device_row.empty:
+                                            device_id = int(device_row.iloc[0]['id'])
+                                            result = device_manager.assign_device(
+                                                booking_id,
+                                                device_id,
+                                                st.session_state['username'],
+                                                is_offsite=True,
+                                                notes=f"Off-site rental {rental_no}"
+                                            )
+                                            
+                                            if result['success']:
+                                                # Create off-site rental record
+                                                device_manager.create_offsite_rental(
+                                                    result['assignment_id'],
+                                                    rental_no,
+                                                    rental_date,
+                                                    contact_person,
+                                                    contact_number,
+                                                    contact_email or None,
+                                                    company or None,
+                                                    address,
+                                                    return_date
+                                                )
+                                    
+                                    st.success(f"✅ Assigned {len(selected_serials)} devices with off-site details")
+                                    time.sleep(1)
+                                    st.rerun()
+                        else:
+                            # Simple assign button for on-site
+                            if st.button(f"Assign {len(selected_serials)} Devices", key=f"assign_{request['request_id']}"):
+                                if selected_serials:
+                                    success_count = 0
+                                    for serial in selected_serials:
+                                        device_row = available[available['serial_number'] == serial]
+                                        if not device_row.empty:
+                                            device_id = int(device_row.iloc[0]['id'])
+                                            result = device_manager.assign_device(
+                                                booking_id,
+                                                device_id,
+                                                st.session_state['username'],
+                                                is_offsite=False
+                                            )
+                                            if result['success']:
+                                                success_count += 1
+                                    
+                                    st.success(f"✅ Assigned {success_count} devices")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.warning("Please select at least one device")
+    
+    except Exception as e:
+        st.error(f"Error loading pending assignments: {e}")
+
+def render_offsite_requests():
+    """Show current off-site rentals"""
+    st.subheader("🚚 Off-site Rentals")
+    
+    try:
+        query = """
+            SELECT 
+                or2.id as rental_id,
+                or2.rental_no,
+                b.client_name,
+                r.name as room_name,
+                or2.contact_person,
+                or2.contact_number,
+                or2.company,
+                or2.address,
+                or2.return_expected_date,
+                or2.returned_at,
+                d.serial_number,
+                dc.name as device_type
+            FROM offsite_rentals or2
+            JOIN booking_device_assignments bda ON or2.booking_device_assignment_id = bda.id
+            JOIN bookings b ON bda.booking_id = b.id
+            JOIN rooms r ON b.room_id = r.id
+            JOIN devices d ON bda.device_id = d.id
+            JOIN device_categories dc ON d.category_id = dc.id
+            WHERE or2.returned_at IS NULL
+            ORDER BY or2.return_expected_date
+        """
+        
+        offsite_df = db.run_query(query)
+        
+        if offsite_df.empty:
+            st.info("No active off-site rentals.")
+            return
+        
+        st.write(f"Found {len(offsite_df)} active off-site rentals")
+        
+        for _, rental in offsite_df.iterrows():
+            with st.expander(
+                f"🚚 Rental #{rental['rental_no']} - {rental['client_name']} "
+                f"| Return: {rental['return_expected_date']}"
+            ):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write(f"**Client:** {rental['client_name']}")
+                    st.write(f"**Room:** {rental['room_name']}")
+                    st.write(f"**Device:** {rental['device_type']} ({rental['serial_number']})")
+                
+                with col2:
+                    st.write(f"**Contact:** {rental['contact_person']}")
+                    st.write(f"**Phone:** {rental['contact_number']}")
+                    if rental['company']:
+                        st.write(f"**Company:** {rental['company']}")
+                    st.write(f"**Address:** {rental['address']}")
+                
+                if st.button("Mark as Returned", key=f"return_{rental['rental_id']}"):
+                    # Update offsite_rental and device status
+                    db.run_query(
+                        "UPDATE offsite_rentals SET returned_at = NOW() WHERE id = %s",
+                        (rental['rental_id'],)
+                    )
+                    st.success("✅ Device marked as returned")
+                    time.sleep(1)
+                    st.rerun()
+    
+    except Exception as e:
+        st.error(f"Error loading off-site rentals: {e}")
+
+def render_conflicts():
+    """Show device conflicts and reallocation options"""
+    st.subheader("⚠️ Device Conflicts")
+    
+    try:
+        # Find devices with overlapping bookings
+        conflict_query = """
+            SELECT DISTINCT
+                d.id as device_id,
+                d.serial_number,
+                dc.name as category_name,
+                b1.id as booking1_id,
+                b1.client_name as client1,
+                lower(b1.booking_period)::date as start1,
+                upper(b1.booking_period)::date as end1,
+                b2.id as booking2_id,
+                b2.client_name as client2,
+                lower(b2.booking_period)::date as start2,
+                upper(b2.booking_period)::date as end2
+            FROM devices d
+            JOIN device_categories dc ON d.category_id = dc.id
+            JOIN booking_device_assignments bda1 ON d.id = bda1.device_id
+            JOIN bookings b1 ON bda1.booking_id = b1.id
+            JOIN booking_device_assignments bda2 ON d.id = bda2.device_id
+            JOIN bookings b2 ON bda2.booking_id = b2.id
+            WHERE b1.id < b2.id
+            AND b1.status = 'confirmed'
+            AND b2.status = 'confirmed'
+            AND b1.booking_period && b2.booking_period
+            AND bda1.is_offsite = false
+            AND bda2.is_offsite = false
+            ORDER BY d.serial_number
+        """
+        
+        conflicts_df = db.run_query(conflict_query)
+        
+        if conflicts_df.empty:
+            st.success("✅ No device conflicts detected")
+            return
+        
+        st.warning(f"Found {len(conflicts_df)} device conflict(s)")
+        
+        for _, conflict in conflicts_df.iterrows():
+            with st.expander(
+                f"⚠️ {conflict['serial_number']} ({conflict['category_name']}) - Conflict Detected"
+            ):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**Booking 1:**")
+                    st.write(f"Client: {conflict['client1']}")
+                    st.write(f"Dates: {conflict['start1']} to {conflict['end1']}")
+                
+                with col2:
+                    st.write("**Booking 2:**")
+                    st.write(f"Client: {conflict['client2']}")
+                    st.write(f"Dates: {conflict['start2']} to {conflict['end2']}")
+                
+                # Show reallocation options
+                st.divider()
+                st.write("**Reallocation Options:**")
+                
+                # Get alternative devices for booking 2
+                alternatives = device_manager.get_available_devices(
+                    conflict['category_name'],
+                    conflict['start2'],
+                    conflict['end2'],
+                    exclude_device_id=conflict['device_id']
+                )
+                
+                if alternatives.empty:
+                    st.error("❌ No alternative devices available")
+                    if st.button(f"Notify IT Boss - No Alternatives", key=f"notify_alt_{conflict['device_id']}"):
+                        st.info("📢 Notification sent to IT Boss")
+                else:
+                    st.success(f"✅ {len(alternatives)} alternative devices available")
+                    
+                    alt_serial = st.selectbox(
+                        "Select alternative device",
+                        options=alternatives['serial_number'].tolist(),
+                        key=f"alt_select_{conflict['device_id']}"
+                    )
+                    
+                    if st.button("Reallocate to Alternative", key=f"realloc_{conflict['device_id']}"):
+                        alt_device = alternatives[alternatives['serial_number'] == alt_serial].iloc[0]
+                        
+                        result = device_manager.reallocate_device(
+                            conflict['device_id'],
+                            conflict['booking2_id'],
+                            conflict['booking2_id'],  # Same booking, just different device
+                            st.session_state['username'],
+                            reason=f"Conflict resolution - moved to {alt_serial}"
+                        )
+                        
+                        # Actually we need to unassign old and assign new
+                        # First unassign the conflicting device
+                        db.run_query(
+                            "DELETE FROM booking_device_assignments WHERE booking_id = %s AND device_id = %s",
+                            (conflict['booking2_id'], conflict['device_id'])
+                        )
+                        
+                        # Assign the alternative
+                        device_manager.assign_device(
+                            conflict['booking2_id'],
+                            int(alt_device['id']),
+                            st.session_state['username'],
+                            is_offsite=False,
+                            notes=f"Assigned as alternative to resolve conflict with {conflict['serial_number']}"
+                        )
+                        
+                        st.success(f"✅ Reallocated to {alt_serial}")
+                        time.sleep(1)
+                        st.rerun()
+    
+    except Exception as e:
+        st.error(f"Error loading conflicts: {e}")
+
+def render_all_assignments():
+    """Show all device assignments"""
+    st.subheader("📊 All Device Assignments")
+    
+    try:
+        query = """
+            SELECT 
+                bda.id as assignment_id,
+                b.client_name,
+                r.name as room_name,
+                d.serial_number,
+                dc.name as device_type,
+                lower(b.booking_period)::date as start_date,
+                upper(b.booking_period)::date as end_date,
+                bda.is_offsite,
+                u.username as assigned_by,
+                bda.assigned_at
+            FROM booking_device_assignments bda
+            JOIN bookings b ON bda.booking_id = b.id
+            JOIN rooms r ON b.room_id = r.id
+            JOIN devices d ON bda.device_id = d.id
+            JOIN device_categories dc ON d.category_id = dc.id
+            LEFT JOIN users u ON bda.assigned_by = u.user_id
+            WHERE b.status = 'confirmed'
+            AND upper(b.booking_period) >= CURRENT_DATE
+            ORDER BY lower(b.booking_period) DESC
+            LIMIT 100
+        """
+        
+        assignments_df = db.run_query(query)
+        
+        if assignments_df.empty:
+            st.info("No device assignments found.")
+            return
+        
+        st.write(f"Showing {len(assignments_df)} assignments")
+        st.dataframe(
+            assignments_df,
+            column_config={
+                'client_name': 'Client',
+                'room_name': 'Room',
+                'serial_number': 'Device Serial',
+                'device_type': 'Type',
+                'start_date': 'Start',
+                'end_date': 'End',
+                'is_offsite': 'Off-site',
+                'assigned_by': 'Assigned By',
+                'assigned_at': 'Assigned At'
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+    
+    except Exception as e:
+        st.error(f"Error loading assignments: {e}")
+
 def render_new_booking_form():
     st.header("📝 New Booking Request")
 
@@ -688,8 +1116,8 @@ def main():
 
     # Navigation Logic based on Role
     if st.session_state['role'] == 'admin':
-        menu = ["Dashboard", "Calendar", "New Room Booking", "New Device Booking", 
-                "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
+        menu = ["Dashboard", "Calendar", "Device Assignment Queue", "New Room Booking", 
+                "New Device Booking", "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
     else:
         # Staff see a limited menu
         menu = ["Calendar", "New Room Booking", "New Device Booking", 
@@ -705,6 +1133,8 @@ def main():
         render_admin_dashboard()
     elif choice == "Calendar":
         render_calendar_view()
+    elif choice == "Device Assignment Queue":
+        render_device_assignment_queue()
     elif choice == "New Room Booking":
         render_new_room_booking()
         # Show the actual booking form below
