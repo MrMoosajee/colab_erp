@@ -184,7 +184,8 @@ def get_calendar_grid(start_date, end_date):
     Returns:
         DataFrame with columns:
         - room_id, room_name, booking_date, booking_id
-        - client_name, headcount, device_count, status, tenant_id
+        - client_name, learners_count, facilitators_count, headcount
+        - device_count, status, tenant_id
     """
     sql = """
         WITH date_range AS (
@@ -197,6 +198,8 @@ def get_calendar_grid(start_date, end_date):
                 dr.booking_date,
                 b.id as booking_id,
                 b.client_name,
+                b.learners_count,
+                b.facilitators_count,
                 b.headcount,
                 b.status,
                 b.tenant_id,
@@ -208,20 +211,12 @@ def get_calendar_grid(start_date, end_date):
                 AND b.status != 'Cancelled'
             LEFT JOIN booking_device_assignments bda ON b.id = bda.booking_id
             WHERE r.is_active = true
-            GROUP BY r.id, r.name, dr.booking_date, b.id, b.client_name, b.headcount, b.status, b.tenant_id
+            GROUP BY r.id, r.name, dr.booking_date, b.id, b.client_name, b.learners_count, b.facilitators_count, b.headcount, b.status, b.tenant_id
         )
         SELECT * FROM expanded_bookings
         ORDER BY room_name, booking_date;
     """
     df = run_query(sql, (start_date, end_date))
-    
-    # DEBUG: Log the query results (commented out for production)
-    # import streamlit as st
-    # st.write(f"DEBUG DB: Query returned {len(df)} rows")
-    # if not df.empty:
-    #     st.write(f"DEBUG DB: Columns: {df.columns.tolist()}")
-    #     st.write(f"DEBUG DB: booking_date dtype: {df['booking_date'].dtype}")
-    #     st.write(f"DEBUG DB: Sample booking_date values: {df['booking_date'].head().tolist()}")
     
     return df
 

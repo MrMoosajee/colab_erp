@@ -154,7 +154,7 @@ def render_calendar_view():
         st.exception(e)
 
 def render_week_view(today, rooms_df):
-    """Render week view with days as rows, rooms as columns"""
+    """Render week view with days as rows, rooms as columns - Excel style with horizontal scrolling"""
     
     # Calculate week start (Monday)
     week_start = today + timedelta(weeks=st.session_state.calendar_week_offset)
@@ -163,30 +163,100 @@ def render_week_view(today, rooms_df):
     
     st.subheader(f"Week of {week_start.strftime('%d %b %Y')} - {week_end.strftime('%d %b %Y')}")
     
-    # st.write(f"DEBUG: Week start = {week_start}, end = {week_end}")
-    
     # Fetch calendar data
     calendar_df = db.get_calendar_grid(week_start, week_end)
-    # st.write(f"DEBUG: Calendar query returned {len(calendar_df)} rows")
     
     # Process data
     if not calendar_df.empty:
         # Convert booking_date to date for comparison
         calendar_df['booking_date'] = pd.to_datetime(calendar_df['booking_date']).dt.date
     
-    # Create calendar grid - ROOMS as columns
+    # Create calendar grid with horizontal scrolling
     num_rooms = len(rooms_df)
-    # st.write(f"DEBUG: Creating grid with {num_rooms} room columns")
     
-    # Header row - Room names as columns
-    header_cols = st.columns([1] + [1] * num_rooms)  # Day column + room columns
-    header_cols[0].markdown("**Day / Room**")
+    # Start scrollable container
+    st.markdown("""
+    <style>
+    .calendar-scroll-container {
+        overflow-x: auto;
+        white-space: nowrap;
+        width: 100%;
+        border: 1px solid #ddd;
+    }
+    .calendar-grid {
+        display: inline-block;
+        min-width: 3500px;
+    }
+    .calendar-cell {
+        display: inline-block;
+        width: 140px;
+        height: 90px;
+        border: 1px solid #ccc;
+        padding: 8px;
+        font-size: 11px;
+        vertical-align: top;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: normal;
+        box-sizing: border-box;
+    }
+    .calendar-header {
+        display: inline-block;
+        width: 140px;
+        height: 50px;
+        border: 1px solid #ccc;
+        padding: 8px;
+        font-size: 11px;
+        font-weight: bold;
+        text-align: center;
+        vertical-align: middle;
+        background-color: #f5f5f5;
+        box-sizing: border-box;
+    }
+    .day-cell {
+        display: inline-block;
+        width: 100px;
+        height: 90px;
+        border: 1px solid #ccc;
+        padding: 8px;
+        font-size: 11px;
+        font-weight: bold;
+        text-align: center;
+        vertical-align: middle;
+        box-sizing: border-box;
+    }
+    .day-header {
+        display: inline-block;
+        width: 100px;
+        height: 50px;
+        border: 1px solid #ccc;
+        padding: 8px;
+        font-size: 11px;
+        font-weight: bold;
+        text-align: center;
+        vertical-align: middle;
+        background-color: #e3f2fd;
+        box-sizing: border-box;
+    }
+    .calendar-row {
+        display: block;
+        white-space: nowrap;
+    }
+    </style>
+    <div class="calendar-scroll-container">
+        <div class="calendar-grid">
+    """, unsafe_allow_html=True)
+    
+    # Header row
+    header_html = '<div class="calendar-row">'
+    header_html += '<div class="day-header">Day / Room</div>'
     
     for idx, (_, room) in enumerate(rooms_df.iterrows()):
         room_name = room['name']
-        header_cols[idx + 1].markdown(f"<div style='font-size: 11px; text-align: center;'><b>{room_name}</b></div>", unsafe_allow_html=True)
+        header_html += f'<div class="calendar-header">{room_name}</div>'
     
-    st.markdown("---")
+    header_html += '</div>'
+    st.markdown(header_html, unsafe_allow_html=True)
     
     # Day rows
     days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -196,27 +266,19 @@ def render_week_view(today, rooms_df):
         is_weekend = day_idx >= 5  # Sat=5, Sun=6
         is_today = current_date == today
         
-        # st.write(f"DEBUG: Processing {day_name} ({current_date})")
-        
-        # Create row with day name + room cells
-        row_cols = st.columns([1] + [1] * num_rooms)
-        
-        # Day name column with styling
+        # Day cell styling
         if is_today:
-            day_bg = "#28a745"  # Green
+            day_bg = "#28a745"
             day_color = "white"
         elif is_weekend:
-            day_bg = "#6f42c1"  # Purple
+            day_bg = "#6f42c1"
             day_color = "white"
         else:
-            day_bg = "#e3f2fd"  # Blue-grey
+            day_bg = "#e3f2fd"
             day_color = "black"
         
-        row_cols[0].markdown(
-            f"<div style='background-color: {day_bg}; color: {day_color}; padding: 8px; border-radius: 4px; text-align: center; font-size: 11px;'>"
-            f"<b>{day_name[:3]}</b><br/>{current_date.strftime('%d')}</div>",
-            unsafe_allow_html=True
-        )
+        row_html = '<div class="calendar-row">'
+        row_html += f'<div class="day-cell" style="background-color: {day_bg}; color: {day_color};">{day_name[:3]}<br/>{current_date.strftime("%d")}</div>'
         
         # Room cells for this day
         for room_idx, (_, room) in enumerate(rooms_df.iterrows()):
@@ -224,58 +286,48 @@ def render_week_view(today, rooms_df):
             room_name = room['name']
             
             # Find booking for this room and date
-            # Note: calendar_df['booking_date'] is now a date object (not Timestamp)
             booking = calendar_df[
                 (calendar_df['room_id'] == room_id) & 
                 (calendar_df['booking_date'] == current_date)
             ]
             
-            # st.write(f"DEBUG: Room {room_name} (ID:{room_id}) on {current_date} - Found {len(booking)} bookings")
-            
             if not booking.empty and pd.notna(booking.iloc[0]['booking_id']):
                 # Has booking
                 client = booking.iloc[0]['client_name']
+                learners = int(booking.iloc[0]['learners_count']) if pd.notna(booking.iloc[0]['learners_count']) else 0
+                facilitators = int(booking.iloc[0]['facilitators_count']) if pd.notna(booking.iloc[0]['facilitators_count']) else 1
                 devices = int(booking.iloc[0]['device_count']) if pd.notna(booking.iloc[0]['device_count']) else 0
                 
-                # st.write(f"DEBUG: Booking found - Client: {client}, Devices: {devices}")
-                
-                # Cell content
-                cell_text = f"<b>{client[:12]}</b>"
+                # Cell content: Client<br/>Learners+Facilitators (+ Devices)
+                cell_text = f"<b>{client}</b><br/>{learners}+{facilitators}"
                 if devices > 0:
-                    cell_text += f"<br/>💻{devices}"
+                    cell_text += f" (+ {devices})"
                 
-                # Cell styling with BLACK text
+                # Cell styling
                 if is_today:
-                    bg_color = "#d4edda"  # Light green
-                    border = "2px solid #28a745"
+                    bg_color = "#d4edda"
                 elif is_weekend:
-                    bg_color = "#e8d5f2"  # Light purple
-                    border = "2px solid #6f42c1"
+                    bg_color = "#e8d5f2"
                 else:
-                    bg_color = "#e3f2fd"  # Light blue
-                    border = "1px solid #90caf9"
+                    bg_color = "#e3f2fd"
                 
-                row_cols[room_idx + 1].markdown(
-                    f"<div style='background-color: {bg_color}; border: {border}; padding: 4px; border-radius: 4px; font-size: 9px; min-height: 45px; text-align: center; color: black;'>"
-                    f"{cell_text}</div>",
-                    unsafe_allow_html=True
-                )
+                row_html += f'<div class="calendar-cell" style="background-color: {bg_color}; color: black;">{cell_text}</div>'
             else:
                 # Empty cell
                 if is_today:
                     bg_color = "#d4edda"
-                    border = "2px solid #28a745"
                 elif is_weekend:
                     bg_color = "#f3e5f5"
-                    border = "1px solid #ce93d8"
                 else:
-                    bg_color = "#f5f5f5"
-                    border = "1px solid #e0e0e0"
+                    bg_color = "#ffffff"
                 
-                row_cols[room_idx + 1].markdown(
-                    f"<div style='background-color: {bg_color}; border: {border}; padding: 4px; border-radius: 4px; min-height: 45px;'></div>",
-                    unsafe_allow_html=True
-                )
+                row_html += f'<div class="calendar-cell" style="background-color: {bg_color};"></div>'
+        
+        row_html += '</div>'
+        st.markdown(row_html, unsafe_allow_html=True)
+    
+    # Close scrollable container
+    st.markdown("</div></div>", unsafe_allow_html=True)
     
     # Legend
     st.markdown("---")
