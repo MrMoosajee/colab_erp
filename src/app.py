@@ -178,14 +178,20 @@ def render_week_view(today, rooms_df):
     st.markdown("""
     <style>
     .calendar-scroll-container {
-        overflow-x: auto;
+        overflow-x: scroll;
         white-space: nowrap;
         width: 100%;
-        border: 1px solid #ddd;
+        border: none;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    .calendar-scroll-container::-webkit-scrollbar {
+        display: none;
     }
     .calendar-grid {
         display: inline-block;
         min-width: 3500px;
+        background: transparent;
     }
     .calendar-cell {
         display: inline-block;
