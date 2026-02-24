@@ -1253,8 +1253,8 @@ def main():
     user_role = st.session_state['role']
     
     if user_role in ['admin', 'training_facility_admin', 'it_admin']:
-        # Full admin menu
-        menu = ["Dashboard", "Calendar", "Device Assignment Queue", "New Room Booking", 
+        # Full admin menu with Notifications
+        menu = ["Dashboard", "Notifications", "Calendar", "Device Assignment Queue", "New Room Booking", 
                 "New Device Booking", "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
     elif user_role in ['it_boss', 'room_boss']:
         # Bosses see notifications
