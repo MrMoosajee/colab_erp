@@ -1252,50 +1252,210 @@ def main():
 
     st.sidebar.title("Colab ERP v2.2.0")
     st.sidebar.caption(f"User: {st.session_state['username']} ({st.session_state['role']})")
-    st.sidebar.info("System Status: 🟢 Online (Headless)")
-
-    # Navigation Logic based on Role
-    user_role = st.session_state['role']
+def render_new_booking_form():
+    """Enhanced booking form with date periods, catering, and supplies."""
+    from src.models import BookingService
     
-    if user_role in ['admin', 'training_facility_admin', 'it_admin']:
-        # Full admin menu with Notifications
-        menu = ["Dashboard", "Notifications", "Calendar", "Device Assignment Queue", "New Room Booking", 
-                "New Device Booking", "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
-    elif user_role in ['it_boss', 'room_boss']:
-        # Bosses see notifications
-        menu = ["Dashboard", "Notifications", "Calendar", "New Room Booking", 
-                "New Device Booking", "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
-    else:
-        # Staff see limited menu
-        menu = ["Calendar", "New Room Booking", "New Device Booking", 
-                "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
-
-    choice = st.sidebar.radio("Navigation", menu)
-
-    st.sidebar.divider()
-    if st.sidebar.button("🔴 Logout"):
-        logout()
-
-    if choice == "Dashboard":
-        render_admin_dashboard()
-    elif choice == "Notifications":
-        render_notifications()
-    elif choice == "Calendar":
-        render_calendar_view()
-    elif choice == "Device Assignment Queue":
-        render_device_assignment_queue()
-    elif choice == "New Room Booking":
-        render_new_room_booking()
-        # Show the actual booking form below
-        render_new_booking_form()
-    elif choice == "New Device Booking":
-        render_new_device_booking()
-    elif choice == "Pricing Catalog":
-        render_pricing_catalog()
-    elif choice == "Pending Approvals":
-        render_pending_approvals()
-    elif choice == "Inventory Dashboard":
-        render_inventory_dashboard()
-
-if __name__ == "__main__":
-    main()
+    booking_service = BookingService()
+    
+    st.header("📝 New Booking Request")
+    st.caption("Facility hours: 07:30 - 16:30 daily")
+    
+    # Initialize session state for availability check
+    if 'booking_start_date' not in st.session_state:
+        st.session_state.booking_start_date = date.today()
+    if 'booking_end_date' not in st.session_state:
+        st.session_state.booking_end_date = date.today()
+    
+    # Section 1: Client Information
+    st.subheader("📋 Client Information")
+    with st.container():
+        col1, col2 = st.columns(2)
+        with col1:
+            client_name = st.text_input("Client/Company Name *", key="client_name")
+            client_contact = st.text_input("Contact Person *", key="contact_person")
+        with col2:
+            client_email = st.text_input("Email *", key="client_email")
+            client_phone = st.text_input("Phone Number *", key="client_phone")
+    
+    st.divider()
+    
+    # Section 2: Booking Period
+    st.subheader("📅 Booking Period")
+    with st.container():
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date = st.date_input("Start Date *", value=st.session_state.booking_start_date, key="start_date")
+        with col2:
+            end_date = st.date_input("End Date *", value=st.session_state.booking_end_date, key="end_date")
+        
+        if start_date > end_date:
+            st.error("❌ Start date cannot be after end date")
+        
+        st.info("🕐 Facility hours: 07:30 - 16:30 (automatically set)")
+    
+    st.divider()
+    
+    # Section 3: Attendees & Room
+    st.subheader("👥 Attendees & Room")
+    with st.container():
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            num_learners = st.number_input("Number of Learners *", min_value=0, value=0, step=1, key="num_learners")
+        with col2:
+            num_facilitators = st.number_input("Number of Facilitators *", min_value=0, value=0, step=1, key="num_facilitators")
+        with col3:
+            total_headcount = num_learners + num_facilitators
+            st.metric("Total Headcount", total_headcount)
+        
+        # Get available rooms for the date range
+        available_rooms = availability_service.get_available_rooms(start_date, end_date)
+        
+        if available_rooms.empty:
+            st.error("❌ No rooms available for the selected dates")
+            st.info("💡 Please contact Room Boss for alternative arrangements")
+            room_options = []
+            selected_room_id = None
+        else:
+            room_options = available_rooms['id'].tolist()
+            selected_room_id = st.selectbox(
+                "Select Room *",
+                options=room_options,
+                format_func=lambda x: f"{available_rooms[available_rooms['id'] == x]['name'].values[0]} (Capacity: {available_rooms[available_rooms['id'] == x]['capacity'].values[0]})"
+            )
+            
+            # Check capacity
+            if selected_room_id and total_headcount > 0:
+                capacity_check = availability_service.validate_booking_capacity(selected_room_id, total_headcount)
+                if capacity_check.get('warning'):
+                    st.warning(capacity_check['message'])
+                else:
+                    st.success(capacity_check['message'])
+    
+    st.divider()
+    
+    # Section 4: Catering
+    st.subheader("☕ Catering")
+    with st.container():
+        col1, col2 = st.columns(2)
+        with col1:
+            coffee_tea = st.checkbox("Coffee/Tea Station", key="coffee_tea")
+            morning_catering = st.selectbox(
+                "Morning Catering",
+                options=['none', 'pastry', 'sandwiches'],
+                format_func=lambda x: {'none': 'None', 'pastry': 'Pastry', 'sandwiches': 'Sandwiches'}[x],
+                key="morning_catering"
+            )
+        with col2:
+            lunch_catering = st.selectbox(
+                "Lunch Catering",
+                options=['none', 'self_catered', 'in_house'],
+                format_func=lambda x: {'none': 'None', 'self_catered': 'Self-catered', 'in_house': 'In-house'}[x],
+                key="lunch_catering"
+            )
+        
+        if lunch_catering == 'in_house':
+            catering_notes = st.text_area(
+                "Catering Requests",
+                placeholder="Specific food requests (if < 3 days). Note: ≥ 3 days = auto-alternating menu (boerewors, beef burger, chicken burger, chicken wrap)",
+                key="catering_notes"
+            )
+        else:
+            catering_notes = None
+    
+    st.divider()
+    
+    # Section 5: Supplies
+    st.subheader("📚 Supplies")
+    with st.container():
+        col1, col2 = st.columns(2)
+        with col1:
+            stationery = st.checkbox("Stationery (Pen & Book) - Per person", key="stationery")
+        with col2:
+            water_bottles = st.number_input("Water Bottles (per day)", min_value=0, value=0, step=1, key="water_bottles")
+    
+    st.divider()
+    
+    # Section 6: Devices
+    st.subheader("💻 Devices")
+    with st.container():
+        col1, col2 = st.columns(2)
+        with col1:
+            devices_needed = st.number_input("Devices Needed", min_value=0, value=0, step=1, key="devices_needed")
+        with col2:
+            device_type = st.selectbox(
+                "Device Type Preference",
+                options=['any', 'laptops', 'desktops'],
+                format_func=lambda x: {'any': 'Any', 'laptops': 'Laptops Only', 'desktops': 'Desktops Only'}[x],
+                key="device_type"
+            )
+        
+        # Check device availability
+        if devices_needed > 0:
+            device_check = availability_service.check_device_availability(
+                devices_needed, start_date, end_date, device_type
+            )
+            if device_check['available']:
+                st.success(device_check['message'])
+            else:
+                st.error(device_check['message'])
+    
+    st.divider()
+    
+    # Submit button
+    if st.button("🚀 Submit Booking Request", type="primary", use_container_width=True):
+        # Validation
+        errors = []
+        if not client_name:
+            errors.append("Client name is required")
+        if not client_contact:
+            errors.append("Contact person is required")
+        if not client_email:
+            errors.append("Email is required")
+        if not client_phone:
+            errors.append("Phone is required")
+        if start_date > end_date:
+            errors.append("Start date cannot be after end date")
+        if not selected_room_id:
+            errors.append("Please select a room")
+        if num_learners + num_facilitators == 0:
+            errors.append("At least one attendee (learner or facilitator) is required")
+        if devices_needed > 0 and not device_check['available']:
+            errors.append(f"Not enough devices available. Only {device_check['available_count']} available.")
+        
+        if errors:
+            for error in errors:
+                st.error(f"❌ {error}")
+        else:
+            # Create booking
+            try:
+                result = booking_service.create_enhanced_booking(
+                    room_id=selected_room_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                    client_name=client_name,
+                    client_contact_person=client_contact,
+                    client_email=client_email,
+                    client_phone=client_phone,
+                    num_learners=num_learners,
+                    num_facilitators=num_facilitators,
+                    coffee_tea_station=coffee_tea,
+                    morning_catering=morning_catering if morning_catering != 'none' else None,
+                    lunch_catering=lunch_catering if lunch_catering != 'none' else None,
+                    catering_notes=catering_notes,
+                    stationery_needed=stationery,
+                    water_bottles=water_bottles,
+                    devices_needed=devices_needed,
+                    device_type_preference=device_type if device_type != 'any' else None,
+                    created_by=st.session_state.get('username')
+                )
+                
+                if result['success']:
+                    st.success(f"✅ {result['message']}")
+                    st.balloons()
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error(f"❌ Booking failed: {result['error']}")
+            except Exception as e:
+                st.error(f"❌ System error: {e}")
