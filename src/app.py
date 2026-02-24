@@ -12,14 +12,15 @@ import time
 import pandas as pd
 from datetime import datetime, timedelta, date
 
-# Import Device Manager
-from src.models import DeviceManager
+# Import Device Manager and Notification Manager
+from src.models import DeviceManager, NotificationManager
 
 # Page Config
 st.set_page_config(page_title="Colab ERP v2.2.0", layout="wide")
 
-# Initialize Device Manager
+# Initialize Managers
 device_manager = DeviceManager()
+notification_manager = NotificationManager()
 
 # ----------------------------------------------------------------------------
 # AUTHENTICATION
@@ -589,6 +590,140 @@ def render_inventory_dashboard():
     st.header("📦 Inventory Dashboard")
     st.info("🚧 Coming Soon - Device inventory management")
 
+def render_notifications():
+    """
+    Notifications page for IT Boss and Room Boss.
+    Shows low stock alerts, conflicts, and overdue returns.
+    """
+    st.header("🔔 Notifications")
+    
+    # Get user's role
+    user_role = st.session_state.get('role')
+    
+    # Map role to notification recipient
+    role_mapping = {
+        'admin': 'admin',
+        'training_facility_admin': 'room_boss',
+        'it_admin': 'it_boss',
+        'it_boss': 'it_boss',
+        'room_boss': 'room_boss'
+    }
+    
+    notification_role = role_mapping.get(user_role, user_role)
+    
+    # Get unread count for badge
+    unread_count = notification_manager.get_unread_count(notification_role)
+    
+    # Show daily summary
+    summary = notification_manager.get_daily_summary(notification_role)
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total (24h)", summary['total_24h'])
+    col2.metric("Unread (24h)", summary['unread_24h'])
+    col3.metric("Total Unread", unread_count)
+    
+    st.divider()
+    
+    # Filter tabs
+    filter_tabs = st.tabs(["All", "Unread", "Low Stock", "Conflicts", "Overdue"])
+    
+    with filter_tabs[0]:
+        render_notification_list(notification_role, unread_only=False)
+    
+    with filter_tabs[1]:
+        render_notification_list(notification_role, unread_only=True)
+    
+    with filter_tabs[2]:
+        render_notification_list(notification_role, notification_type='low_stock')
+    
+    with filter_tabs[3]:
+        render_notification_list(notification_role, notification_type='conflict_no_alternatives')
+    
+    with filter_tabs[4]:
+        render_notification_list(notification_role, notification_type='return_overdue')
+
+def render_notification_list(user_role: str, unread_only: bool = False, notification_type: str = None):
+    """Render list of notifications"""
+    
+    try:
+        notifications_df = notification_manager.get_notifications_for_user(
+            user_role, 
+            unread_only=unread_only,
+            notification_type=notification_type,
+            limit=50
+        )
+        
+        if notifications_df.empty:
+            st.info("No notifications found.")
+            return
+        
+        # Mark all as read button
+        if unread_only or not notification_type:
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                if st.button("Mark All Read", key=f"mark_all_{unread_only}_{notification_type}"):
+                    result = notification_manager.mark_all_as_read(user_role)
+                    if result['success']:
+                        st.success(f"✅ {result['message']}")
+                        time.sleep(1)
+                        st.rerun()
+        
+        st.write(f"Showing {len(notifications_df)} notifications")
+        
+        # Display notifications
+        for _, notif in notifications_df.iterrows():
+            # Determine icon based on type
+            icon = "📢"
+            if notif['notification_type'] == 'low_stock':
+                icon = "⚠️"
+            elif notif['notification_type'] == 'conflict_no_alternatives':
+                icon = "🔴"
+            elif notif['notification_type'] == 'offsite_conflict':
+                icon = "🚚"
+            elif notif['notification_type'] == 'return_overdue':
+                icon = "⏰"
+            
+            # Format timestamp
+            created_at = notif['created_at']
+            if isinstance(created_at, pd.Timestamp):
+                time_ago = (pd.Timestamp.now() - created_at)
+                if time_ago.days > 0:
+                    time_str = f"{time_ago.days} days ago"
+                elif time_ago.seconds // 3600 > 0:
+                    time_str = f"{time_ago.seconds // 3600} hours ago"
+                else:
+                    time_str = f"{time_ago.seconds // 60} minutes ago"
+            else:
+                time_str = str(created_at)
+            
+            # Create expander for each notification
+            is_unread = not notif['is_read']
+            bg_color = "#fff3cd" if is_unread else "#f8f9fa"
+            border_left = "4px solid #ffc107" if is_unread else "4px solid #dee2e6"
+            
+            with st.container():
+                st.markdown(f"""
+                <div style="background-color: {bg_color}; border-left: {border_left}; padding: 10px; margin: 5px 0; border-radius: 4px;">
+                    <b>{icon} {notif['notification_type'].replace('_', ' ').title()}</b> 
+                    <span style="color: #6c757d; font-size: 0.85em;">({time_str})</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.write(notif['message'])
+                
+                if is_unread:
+                    if st.button("Mark as Read", key=f"read_{notif['id']}"):
+                        result = notification_manager.mark_as_read(notif['id'])
+                        if result['success']:
+                            st.success("✅ Marked as read")
+                            time.sleep(0.5)
+                            st.rerun()
+                
+                st.divider()
+    
+    except Exception as e:
+        st.error(f"Error loading notifications: {e}")
+
 def render_device_assignment_queue():
     """
     IT Staff Device Assignment Interface
@@ -1115,11 +1250,18 @@ def main():
     st.sidebar.info("System Status: 🟢 Online (Headless)")
 
     # Navigation Logic based on Role
-    if st.session_state['role'] == 'admin':
+    user_role = st.session_state['role']
+    
+    if user_role in ['admin', 'training_facility_admin', 'it_admin']:
+        # Full admin menu
         menu = ["Dashboard", "Calendar", "Device Assignment Queue", "New Room Booking", 
                 "New Device Booking", "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
+    elif user_role in ['it_boss', 'room_boss']:
+        # Bosses see notifications
+        menu = ["Dashboard", "Notifications", "Calendar", "New Room Booking", 
+                "New Device Booking", "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
     else:
-        # Staff see a limited menu
+        # Staff see limited menu
         menu = ["Calendar", "New Room Booking", "New Device Booking", 
                 "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
 
@@ -1131,6 +1273,8 @@ def main():
 
     if choice == "Dashboard":
         render_admin_dashboard()
+    elif choice == "Notifications":
+        render_notifications()
     elif choice == "Calendar":
         render_calendar_view()
     elif choice == "Device Assignment Queue":
