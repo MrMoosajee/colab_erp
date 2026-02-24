@@ -13,7 +13,7 @@ import pandas as pd
 from datetime import datetime, timedelta, date
 
 # Import Device Manager and Notification Manager
-from src.models import DeviceManager, NotificationManager
+from src.models import DeviceManager, NotificationManager, AvailabilityService
 
 # Page Config
 st.set_page_config(page_title="Colab ERP v2.2.0", layout="wide")
@@ -21,6 +21,7 @@ st.set_page_config(page_title="Colab ERP v2.2.0", layout="wide")
 # Initialize Managers
 device_manager = DeviceManager()
 notification_manager = NotificationManager()
+availability_service = AvailabilityService()
 
 # ----------------------------------------------------------------------------
 # AUTHENTICATION
