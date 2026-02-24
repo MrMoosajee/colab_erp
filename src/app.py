@@ -601,9 +601,12 @@ def render_notifications():
     user_role = st.session_state.get('role')
     
     # Map role to notification recipient
+    # admin (training_facility_admin) = room_boss
+    # it_admin (it_rental_admin) = it_boss
     role_mapping = {
         'admin': 'admin',
         'training_facility_admin': 'room_boss',
+        'it_rental_admin': 'it_boss',
         'it_admin': 'it_boss',
         'it_boss': 'it_boss',
         'room_boss': 'room_boss'
@@ -1202,8 +1205,9 @@ def render_new_booking_form():
                 st.error(f"❌ System Error: {e}")
 
 def render_admin_dashboard():
-    # RBAC Check: Only Admins can see the dashboard
-    if st.session_state.get('role') != 'admin':
+    # RBAC Check: Admins, training_facility_admin, and it_rental_admin can see dashboard
+    allowed_roles = ['admin', 'training_facility_admin', 'it_rental_admin', 'it_admin']
+    if st.session_state.get('role') not in allowed_roles:
         st.warning("⛔ Access Denied: You do not have permission to view this page.")
         return
 
