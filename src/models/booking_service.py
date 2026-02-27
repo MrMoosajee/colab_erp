@@ -160,11 +160,11 @@ class BookingService:
                         stationery_needed, water_bottles,
                         devices_needed, device_type_preference,
                         client_contact_person, client_email, client_phone,
-                        room_boss_notes, created_by
+                        room_boss_notes
                     ) VALUES (
                         %s, tstzrange(%s, %s, '[)'), %s, %s,
                         %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING id
                     """,
@@ -178,29 +178,15 @@ class BookingService:
                         f"OFF-SITE RENTAL | Rental No: {rental_no} | Contact: {offsite_contact} | "
                         f"Phone: {offsite_phone} | Company: {offsite_company} | "
                         f"Address: {offsite_address} | Return: {return_expected_date} | "
-                        f"Notes: {notes or 'N/A'}",
-                        created_by
+                        f"Notes: {notes or 'N/A'} | Created by: {created_by or 'system'}"
                     )
                 )
 
                 booking_id = cur.fetchone()[0]
 
-                # Create device assignment records (pending actual device assignment)
-                for req in device_requests:
-                    cur.execute(
-                        """
-                        INSERT INTO booking_device_assignments 
-                        (booking_id, device_category_id, quantity, assigned_by, notes)
-                        VALUES (%s, %s, %s, %s, %s)
-                        """,
-                        (
-                            booking_id,
-                            req['category_id'],
-                            req['quantity'],
-                            created_by,
-                            f"Off-site rental request for {req['category_name']} - {rental_no}"
-                        )
-                    )
+                # Note: Device assignments will be created later by IT Staff
+                # when they assign actual devices. We don't create them here
+                # to avoid database trigger issues with NULL device_id.
 
                 conn.commit()
 
