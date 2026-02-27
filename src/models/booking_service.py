@@ -66,27 +66,26 @@ class BookingService:
                     """
                     INSERT INTO bookings (
                         room_id, booking_period, client_name, status,
-                        num_learners, num_facilitators, headcount,
-                        client_contact_person, client_email, client_phone,
+                        headcount, end_date, num_learners, num_facilitators,
                         coffee_tea_station, morning_catering, lunch_catering, catering_notes,
                         stationery_needed, water_bottles,
                         devices_needed, device_type_preference,
-                        room_boss_notes,
-                        created_at
+                        client_contact_person, client_email, client_phone,
+                        room_boss_notes, created_at
                     ) VALUES (
                         %s, tstzrange(%s, %s, '[)'), %s, %s,
-                        %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
                     )
                     RETURNING id
                     """,
                     (
                         room_id, start_dt, end_dt, client_name, status,
-                        num_learners, num_facilitators, total_headcount,
-                        client_contact_person, client_email, client_phone,
+                        total_headcount, end_date, num_learners, num_facilitators,
                         coffee_tea_station, morning_catering, lunch_catering, catering_notes,
                         stationery_needed, water_bottles,
                         devices_needed, device_type_preference,
+                        client_contact_person, client_email, client_phone,
                         room_boss_notes
                     )
                 )
