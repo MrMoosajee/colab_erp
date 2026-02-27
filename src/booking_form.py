@@ -64,20 +64,9 @@ def render_enhanced_booking_form():
     # Section 2: Booking Period Selection Mode
     st.subheader("📅 Booking Configuration")
 
-    # Role-based room selection options
-    if is_admin:
-        room_selection_mode = st.radio(
-            "Room Selection Mode",
-            options=['select_room', 'skip_pending'],
-            format_func=lambda x: {
-                'select_room': '🏢 Select Room (Direct Booking)',
-                'skip_pending': '⏳ Skip - Send to Room Boss for Approval'
-            }[x],
-            help="Select room now if available, or let Room Boss assign later"
-        )
-    else:
-        room_selection_mode = 'skip_pending'
-        st.info("⏳ As staff user, booking will be sent to Room Boss for room assignment")
+    # Room selection is required for all bookings
+    st.info("🏢 Please select a room for this booking. Room Boss can reassign later if needed.")
+    room_selection_mode = 'select_room'
 
     st.divider()
 
@@ -123,44 +112,43 @@ def render_enhanced_booking_form():
         if seg_start > seg_end:
             st.error("❌ Start date cannot be after end date")
 
-        # Room selection (only for admin in 'select_room' mode)
+        # Room selection (required for all users)
         selected_room_id = None
         selected_room_name = None
         conflict_info = None
 
-        if room_selection_mode == 'select_room' and is_admin:
-            # Get all rooms for selection (not just available)
-            all_rooms = availability_service.get_all_rooms()
+        # Get all rooms for selection (not just available)
+        all_rooms = availability_service.get_all_rooms()
 
-            if all_rooms.empty:
-                st.error("❌ No rooms found in database")
-            else:
-                room_options = all_rooms['id'].tolist()
-                selected_room_id = st.selectbox(
-                    "Select Room *",
-                    options=room_options,
-                    format_func=lambda x: f"{all_rooms[all_rooms['id'] == x]['name'].values[0]} (Capacity: {all_rooms[all_rooms['id'] == x]['capacity'].values[0]})",
-                    key="room_select"
-                )
+        if all_rooms.empty:
+            st.error("❌ No rooms found in database")
+        else:
+            room_options = all_rooms['id'].tolist()
+            selected_room_id = st.selectbox(
+                "Select Room *",
+                options=room_options,
+                format_func=lambda x: f"{all_rooms[all_rooms['id'] == x]['name'].values[0]} (Capacity: {all_rooms[all_rooms['id'] == x]['capacity'].values[0]})",
+                key="room_select"
+            )
 
-                if selected_room_id:
-                    selected_room_name = all_rooms[all_rooms['id'] == selected_room_id]['name'].values[0]
+            if selected_room_id:
+                selected_room_name = all_rooms[all_rooms['id'] == selected_room_id]['name'].values[0]
 
-                    # Only check conflicts if dates are valid
-                    if seg_start <= seg_end:
-                        # Check for conflicts
-                        conflict_info = availability_service.check_room_conflicts(
-                            selected_room_id, seg_start, seg_end
-                        )
+                # Only check conflicts if dates are valid
+                if seg_start <= seg_end:
+                    # Check for conflicts
+                    conflict_info = availability_service.check_room_conflicts(
+                        selected_room_id, seg_start, seg_end
+                    )
 
-                        if conflict_info['has_conflict']:
-                            st.error(f"🚫 **CONFLICT DETECTED**: {conflict_info['message']}")
-                            st.write("Existing bookings:")
-                            for conflict in conflict_info['conflicts']:
-                                st.write(f"- {conflict['client_name']}: {conflict['start_date']} to {conflict['end_date']}")
-                            st.warning("⚠️ You cannot book this room. Either choose a different room or use 'Skip - Send to Pending' mode.")
-                        else:
-                            st.success(f"✅ Room available: {conflict_info['message']}")
+                    if conflict_info['has_conflict']:
+                        st.error(f"🚫 **CONFLICT DETECTED**: {conflict_info['message']}")
+                        st.write("Existing bookings:")
+                        for conflict in conflict_info['conflicts']:
+                            st.write(f"- {conflict['client_name']}: {conflict['start_date']} to {conflict['end_date']}")
+                        st.warning("⚠️ You cannot book this room. Please choose a different room.")
+                    else:
+                        st.success(f"✅ Room available: {conflict_info['message']}")
 
         # Notes for Room Boss (especially useful for staff)
         room_notes = st.text_area(
@@ -173,10 +161,10 @@ def render_enhanced_booking_form():
         if st.button("➕ Add This Segment", key="add_segment"):
             if seg_start > seg_end:
                 st.error("❌ Start date cannot be after end date")
-            elif room_selection_mode == 'select_room' and is_admin and not selected_room_id:
+            elif not selected_room_id:
                 st.error("❌ Please select a room")
-            elif room_selection_mode == 'select_room' and is_admin and conflict_info and conflict_info['has_conflict']:
-                st.error("🚫 Cannot add segment - room has conflicts. Choose a different room or use 'Skip to Pending' mode.")
+            elif conflict_info and conflict_info['has_conflict']:
+                st.error("🚫 Cannot add segment - room has conflicts. Please choose a different room.")
             else:
                 segment = {
                     'start_date': seg_start,
@@ -267,8 +255,8 @@ def render_enhanced_booking_form():
         with col2:
             device_type = st.selectbox(
                 "Device Type Preference",
-                options=['any', 'laptops', 'desktops'],
-                format_func=lambda x: {'any': 'Any', 'laptops': 'Laptops Only', 'desktops': 'Desktops Only'}[x],
+                options=[None, 'any', 'laptops', 'desktops'],
+                format_func=lambda x: {None: 'None', 'any': 'Any', 'laptops': 'Laptops Only', 'desktops': 'Desktops Only'}[x],
                 key="device_type"
             )
 
@@ -316,6 +304,11 @@ def render_enhanced_booking_form():
         if devices_needed > 0 and not device_check['available']:
             errors.append(f"Not enough devices available for one or more segments")
 
+        # Validate all segments have room_id
+        for i, segment in enumerate(st.session_state.booking_segments):
+            if not segment.get('room_id'):
+                errors.append(f"Segment {i+1}: Room selection is required")
+
         if errors:
             for error in errors:
                 st.error(f"❌ {error}")
@@ -326,14 +319,11 @@ def render_enhanced_booking_form():
                 failed_bookings = []
 
                 for segment in st.session_state.booking_segments:
-                    # Determine status based on room selection
-                    if segment.get('room_id'):
-                        status = 'Confirmed'
-                    else:
-                        status = 'Pending'
+                    # All bookings are confirmed when room is selected
+                    status = 'Pending'  # Use Pending status which is allowed by database
 
                     result = booking_service.create_enhanced_booking(
-                        room_id=segment.get('room_id'),  # None if pending
+                        room_id=segment['room_id'],  # Always valid room_id
                         start_date=segment['start_date'],
                         end_date=segment['end_date'],
                         client_name=client_name,

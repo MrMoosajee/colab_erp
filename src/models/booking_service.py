@@ -27,7 +27,7 @@ class BookingService:
 
     def create_enhanced_booking(
         self,
-        room_id: Optional[int],
+        room_id: int,
         start_date: date,
         end_date: date,
         client_name: str,
@@ -45,12 +45,12 @@ class BookingService:
         devices_needed: int = 0,
         device_type_preference: Optional[str] = None,
         room_boss_notes: Optional[str] = None,
-        status: str = 'Pending',
-        created_by: Optional[str] = None
+        status: str = 'Pending'
     ) -> Dict[str, Any]:
         """
         Create an enhanced booking with all Phase 3 fields.
-        Supports Ghost Inventory: room_id can be None for pending bookings.
+        NOTE: room_id is required (NOT NULL in database).
+        For pending bookings, use a placeholder room or specific workflow.
         """
         conn = None
         try:
@@ -62,6 +62,7 @@ class BookingService:
                 # Calculate total headcount
                 total_headcount = num_learners + num_facilitators
 
+                # Insert booking with ALL fields properly mapped
                 cur.execute(
                     """
                     INSERT INTO bookings (
@@ -71,11 +72,11 @@ class BookingService:
                         stationery_needed, water_bottles,
                         devices_needed, device_type_preference,
                         client_contact_person, client_email, client_phone,
-                        room_boss_notes, created_at
+                        room_boss_notes
                     ) VALUES (
                         %s, tstzrange(%s, %s, '[)'), %s, %s,
                         %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING id
                     """,
@@ -128,9 +129,9 @@ class BookingService:
                         b.coffee_tea_station, b.morning_catering, b.lunch_catering,
                         b.catering_notes, b.stationery_needed, b.water_bottles,
                         b.devices_needed, b.device_type_preference,
-                        b.created_by, b.created_at
+                        b.created_at
                     FROM bookings b
-                    JOIN rooms r ON b.room_id = r.id
+                    LEFT JOIN rooms r ON b.room_id = r.id
                     WHERE b.id = %s
                     """,
                     (booking_id,)
