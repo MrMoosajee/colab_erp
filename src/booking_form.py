@@ -17,6 +17,14 @@ booking_service = BookingService()
 availability_service = AvailabilityService()
 
 
+def on_start_date_change():
+    """Callback when start date changes - auto-update end date to match"""
+    new_start = st.session_state.seg_start
+    # Always update end date to match start date
+    st.session_state.booking_end_date = new_start
+    st.session_state.booking_start_date = new_start
+
+
 def render_enhanced_booking_form():
     """
     Render the enhanced Phase 3 booking form with Ghost Inventory workflow.
@@ -101,7 +109,8 @@ def render_enhanced_booking_form():
                 "Start Date *",
                 value=st.session_state.booking_start_date,
                 min_value=date.today(),
-                key="seg_start"
+                key="seg_start",
+                on_change=on_start_date_change
             )
         with col2:
             seg_end = st.date_input(
