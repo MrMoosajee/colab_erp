@@ -13,7 +13,7 @@ import pandas as pd
 from datetime import datetime, timedelta, date
 
 # Import Device Manager and Notification Manager
-from src.models import DeviceManager, NotificationManager, BookingService, AvailabilityService, RoomApprovalService
+from src.models import DeviceManager, NotificationManager, BookingService, AvailabilityService, RoomApprovalService, PricingService
 
 # Import enhanced booking form
 from src.booking_form import render_enhanced_booking_form
@@ -730,92 +730,254 @@ def render_new_device_booking():
 
 def render_pricing_catalog():
     """
-    Pricing catalog for rooms and devices.
-    Shows current pricing tiers for different services.
+    Dynamic Pricing Catalog - Only accessible by admin and it_admin.
+    Prices are stored in database and can be edited by authorized users.
     """
+    # Check if user has permission to view pricing
+    user_role = st.session_state.get('role')
+    allowed_roles = ['admin', 'it_admin', 'training_facility_admin', 'it_rental_admin']
+    
+    if user_role not in allowed_roles:
+        st.error("⛔ Access Denied: Only admin and IT admin can view pricing information.")
+        return
+    
+    # Initialize pricing service
+    pricing_service = PricingService()
+    
     st.header("💰 Pricing Catalog")
-    st.caption("Current rates for rooms, devices, and services")
+    st.caption("Manage pricing for rooms, devices, and services")
     
-    # Room Pricing
-    st.subheader("🏢 Room Rates (per day)")
+    # Tabs for viewing and editing
+    view_tab, edit_tab, add_tab = st.tabs(["📋 View Pricing", "✏️ Edit Pricing", "➕ Add New Pricing"])
     
-    room_pricing = {
-        "Standard Training Room (≤20 ppl)": "R850",
-        "Large Training Room (21-40 ppl)": "R1,200",
-        "Conference Room": "R1,500",
-        "A302 Office": "R2,500",
-        "A303 Office": "R2,500",
-        "Vision Suite": "R3,000"
-    }
+    with view_tab:
+        # Category filter
+        category_filter = st.selectbox(
+            "Filter by Category",
+            options=["All", "room", "device"],
+            format_func=lambda x: x.title() if x != "All" else "All Categories"
+        )
+        
+        try:
+            if category_filter == "All":
+                pricing_df = pricing_service.get_all_pricing()
+            else:
+                pricing_df = pricing_service.get_pricing_by_category(category_filter)
+            
+            if pricing_df.empty:
+                st.info("No pricing information found.")
+            else:
+                # Display pricing by category
+                for category in pricing_df['category'].unique():
+                    st.subheader(f"{category.title()} Pricing")
+                    
+                    category_df = pricing_df[pricing_df['category'] == category]
+                    
+                    for _, item in category_df.iterrows():
+                        col1, col2, col3 = st.columns([3, 2, 2])
+                        
+                        with col1:
+                            st.write(f"**{item['item_name']}**")
+                            if pd.notna(item.get('notes')):
+                                st.caption(item['notes'])
+                        
+                        with col2:
+                            rates = []
+                            if pd.notna(item.get('daily_rate')):
+                                rates.append(f"Daily: R{item['daily_rate']:.2f}")
+                            if pd.notna(item.get('weekly_rate')):
+                                rates.append(f"Weekly: R{item['weekly_rate']:.2f}")
+                            if pd.notna(item.get('monthly_rate')):
+                                rates.append(f"Monthly: R{item['monthly_rate']:.2f}")
+                            
+                            for rate in rates:
+                                st.write(rate)
+                        
+                        with col3:
+                            st.write(f"Tier: {item.get('pricing_tier', 'standard')}")
+                            if pd.notna(item.get('effective_date')):
+                                st.caption(f"Effective: {item['effective_date']}")
+                        
+                        st.divider()
+        
+        except Exception as e:
+            st.error(f"Error loading pricing: {e}")
     
-    for room, price in room_pricing.items():
-        col1, col2 = st.columns([3, 1])
-        col1.write(f"**{room}**")
-        col2.write(f"**{price}**")
+    with edit_tab:
+        st.subheader("Edit Existing Pricing")
+        
+        try:
+            # Get all pricing for selection
+            all_pricing = pricing_service.get_all_pricing()
+            
+            if all_pricing.empty:
+                st.info("No pricing items available to edit.")
+            else:
+                # Create selection dropdown
+                pricing_options = all_pricing.apply(
+                    lambda x: f"{x['item_name']} ({x['category']}) - ID:{x['id']}", axis=1
+                ).tolist()
+                
+                selected = st.selectbox("Select item to edit", options=pricing_options)
+                
+                if selected:
+                    # Extract ID from selection
+                    pricing_id = int(selected.split("ID:")[-1])
+                    
+                    # Get current values
+                    current_item = all_pricing[all_pricing['id'] == pricing_id].iloc[0]
+                    
+                    st.write(f"**Editing:** {current_item['item_name']}")
+                    
+                    # Edit form
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        new_daily = st.number_input(
+                            "Daily Rate (R)",
+                            value=float(current_item['daily_rate']) if pd.notna(current_item.get('daily_rate')) else 0.0,
+                            min_value=0.0,
+                            step=10.0
+                        )
+                    
+                    with col2:
+                        new_weekly = st.number_input(
+                            "Weekly Rate (R)",
+                            value=float(current_item['weekly_rate']) if pd.notna(current_item.get('weekly_rate')) else 0.0,
+                            min_value=0.0,
+                            step=50.0
+                        )
+                    
+                    with col3:
+                        new_monthly = st.number_input(
+                            "Monthly Rate (R)",
+                            value=float(current_item['monthly_rate']) if pd.notna(current_item.get('monthly_rate')) else 0.0,
+                            min_value=0.0,
+                            step=100.0
+                        )
+                    
+                    new_notes = st.text_area(
+                        "Notes",
+                        value=current_item.get('notes', '') if pd.notna(current_item.get('notes')) else ''
+                    )
+                    
+                    if st.button("💾 Save Changes", type="primary"):
+                        result = pricing_service.update_pricing(
+                            pricing_id=pricing_id,
+                            daily_rate=new_daily if new_daily > 0 else None,
+                            weekly_rate=new_weekly if new_weekly > 0 else None,
+                            monthly_rate=new_monthly if new_monthly > 0 else None,
+                            notes=new_notes if new_notes else None,
+                            updated_by=st.session_state.get('username')
+                        )
+                        
+                        if result['success']:
+                            st.success(result['message'])
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(result['message'])
+        
+        except Exception as e:
+            st.error(f"Error in edit mode: {e}")
     
-    st.divider()
-    
-    # Device Pricing
-    st.subheader("💻 Device Rental Rates")
-    
-    device_pricing = {
-        "Laptop (Daily)": "R150",
-        "Laptop (Weekly)": "R750",
-        "Laptop (Monthly)": "R2,500",
-        "Desktop (Daily)": "R120",
-        "Desktop (Weekly)": "R600",
-        "Desktop (Monthly)": "R2,000"
-    }
-    
-    for device, price in device_pricing.items():
-        col1, col2 = st.columns([3, 1])
-        col1.write(f"**{device}**")
-        col2.write(f"**{price}**")
-    
-    st.divider()
-    
-    # Catering Pricing
-    st.subheader("☕ Catering Rates (per person)")
-    
-    catering_pricing = {
-        "Coffee/Tea Station": "R25",
-        "Morning Pastry": "R35",
-        "Morning Sandwiches": "R55",
-        "Lunch (In-house)": "R95",
-        "Water Bottle": "R15",
-        "Stationery (Pen & Book)": "R45"
-    }
-    
-    for item, price in catering_pricing.items():
-        col1, col2 = st.columns([3, 1])
-        col1.write(f"**{item}**")
-        col2.write(f"**{price}**")
-    
-    st.divider()
-    
-    # Package Deals
-    st.subheader("📦 Package Deals")
-    
-    with st.expander("Training Package (Full Day)"):
-        st.write("**R1,500 per person**")
-        st.write("Includes:")
-        st.write("• Room rental")
-        st.write("• Laptop")
-        st.write("• Coffee/Tea Station")
-        st.write("• Morning pastry")
-        st.write("• Lunch")
-        st.write("• Stationery")
-    
-    with st.expander("Meeting Package (Half Day)"):
-        st.write("**R850 per person**")
-        st.write("Includes:")
-        st.write("• Room rental (4 hours)")
-        st.write("• Coffee/Tea Station")
-        st.write("• Morning or afternoon snack")
-    
-    # Footer
-    st.divider()
-    st.caption("💡 All prices exclude VAT. Bulk discounts available for bookings >10 people. Contact admin for custom quotes.")
+    with add_tab:
+        st.subheader("Add New Pricing")
+        
+        # Get rooms and devices without pricing
+        try:
+            rooms_without = pricing_service.get_rooms_without_pricing()
+            devices_without = pricing_service.get_devices_without_pricing()
+            
+            # Selection for what to add pricing for
+            item_type = st.radio("Item Type", options=["room", "device"])
+            
+            if item_type == "room":
+                if rooms_without.empty:
+                    st.info("All rooms already have pricing set up.")
+                else:
+                    room_options = rooms_without.apply(
+                        lambda x: f"{x['name']} (Capacity: {x['max_capacity']})", axis=1
+                    ).tolist()
+                    
+                    selected_room = st.selectbox("Select Room", options=room_options)
+                    room_id = rooms_without.iloc[room_options.index(selected_room)]['id']
+                    
+                    # Pricing input
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        daily_rate = st.number_input("Daily Rate (R)", min_value=0.0, step=10.0)
+                    with col2:
+                        weekly_rate = st.number_input("Weekly Rate (R)", min_value=0.0, step=50.0)
+                    with col3:
+                        monthly_rate = st.number_input("Monthly Rate (R)", min_value=0.0, step=100.0)
+                    
+                    pricing_tier = st.selectbox("Pricing Tier", options=["standard", "premium", "discounted"])
+                    notes = st.text_area("Notes (optional)")
+                    
+                    if st.button("➕ Add Pricing", type="primary"):
+                        result = pricing_service.create_pricing(
+                            item_type="room",
+                            item_id=int(room_id),
+                            daily_rate=daily_rate if daily_rate > 0 else None,
+                            weekly_rate=weekly_rate if weekly_rate > 0 else None,
+                            monthly_rate=monthly_rate if monthly_rate > 0 else None,
+                            pricing_tier=pricing_tier,
+                            notes=notes if notes else None,
+                            created_by=st.session_state.get('username')
+                        )
+                        
+                        if result['success']:
+                            st.success(result['message'])
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(result['message'])
+            
+            else:  # device
+                if devices_without.empty:
+                    st.info("All devices already have pricing set up.")
+                else:
+                    device_options = devices_without.apply(
+                        lambda x: f"{x['name']} ({x['category']})", axis=1
+                    ).tolist()
+                    
+                    selected_device = st.selectbox("Select Device", options=device_options)
+                    device_id = devices_without.iloc[device_options.index(selected_device)]['id']
+                    
+                    # Pricing input
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        daily_rate = st.number_input("Daily Rate (R)", min_value=0.0, step=10.0)
+                    with col2:
+                        weekly_rate = st.number_input("Weekly Rate (R)", min_value=0.0, step=50.0)
+                    with col3:
+                        monthly_rate = st.number_input("Monthly Rate (R)", min_value=0.0, step=100.0)
+                    
+                    pricing_tier = st.selectbox("Pricing Tier", options=["standard", "premium", "discounted"])
+                    notes = st.text_area("Notes (optional)")
+                    
+                    if st.button("➕ Add Pricing", type="primary"):
+                        result = pricing_service.create_pricing(
+                            item_type="device",
+                            item_id=int(device_id),
+                            daily_rate=daily_rate if daily_rate > 0 else None,
+                            weekly_rate=weekly_rate if weekly_rate > 0 else None,
+                            monthly_rate=monthly_rate if monthly_rate > 0 else None,
+                            pricing_tier=pricing_tier,
+                            notes=notes if notes else None,
+                            created_by=st.session_state.get('username')
+                        )
+                        
+                        if result['success']:
+                            st.success(result['message'])
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(result['message'])
+        
+        except Exception as e:
+            st.error(f"Error in add mode: {e}")
 
 def render_pending_approvals():
     """
@@ -1811,18 +1973,21 @@ def main():
     # Navigation Logic based on Role
     user_role = st.session_state['role']
     
+    # Pricing catalog only for admin and it_admin
+    pricing_allowed = ['admin', 'it_admin', 'training_facility_admin', 'it_rental_admin']
+    
     if user_role in ['admin', 'training_facility_admin', 'it_admin']:
-        # Full admin menu with Notifications
+        # Full admin menu with Notifications and Pricing
         menu = ["Dashboard", "Notifications", "Calendar", "Device Assignment Queue", "New Room Booking", 
                 "New Device Booking", "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
     elif user_role in ['it_boss', 'room_boss']:
-        # Bosses see notifications
+        # Bosses see notifications but NOT pricing
         menu = ["Dashboard", "Notifications", "Calendar", "New Room Booking", 
-                "New Device Booking", "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
+                "New Device Booking", "Pending Approvals", "Inventory Dashboard"]
     else:
-        # Staff see limited menu
+        # Staff see limited menu, NO pricing
         menu = ["Calendar", "New Room Booking", "New Device Booking", 
-                "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
+                "Pending Approvals", "Inventory Dashboard"]
 
     choice = st.sidebar.radio("Navigation", menu)
 

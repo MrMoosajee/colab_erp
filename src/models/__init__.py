@@ -5,5 +5,6 @@ from .notification_manager import NotificationManager
 from .booking_service import BookingService
 from .availability_service import AvailabilityService
 from .room_approval_service import RoomApprovalService
+from .pricing_service import PricingService
 
-__all__ = ['DeviceManager', 'NotificationManager', 'BookingService', 'AvailabilityService', 'RoomApprovalService']
+__all__ = ['DeviceManager', 'NotificationManager', 'BookingService', 'AvailabilityService', 'RoomApprovalService', 'PricingService']
