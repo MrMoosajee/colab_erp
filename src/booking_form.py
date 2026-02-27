@@ -137,19 +137,21 @@ def render_enhanced_booking_form():
                 if selected_room_id:
                     selected_room_name = all_rooms[all_rooms['id'] == selected_room_id]['name'].values[0]
 
-                    # Check for conflicts
-                    conflict_info = availability_service.check_room_conflicts(
-                        selected_room_id, seg_start, seg_end
-                    )
+                    # Only check conflicts if dates are valid
+                    if seg_start <= seg_end:
+                        # Check for conflicts
+                        conflict_info = availability_service.check_room_conflicts(
+                            selected_room_id, seg_start, seg_end
+                        )
 
-                    if conflict_info['has_conflict']:
-                        st.error(f"🚫 **CONFLICT DETECTED**: {conflict_info['message']}")
-                        st.write("Existing bookings:")
-                        for conflict in conflict_info['conflicts']:
-                            st.write(f"- {conflict['client_name']}: {conflict['start_date']} to {conflict['end_date']}")
-                        st.warning("⚠️ You cannot book this room. Either choose a different room or use 'Skip - Send to Pending' mode.")
-                    else:
-                        st.success(f"✅ Room available: {conflict_info['message']}")
+                        if conflict_info['has_conflict']:
+                            st.error(f"🚫 **CONFLICT DETECTED**: {conflict_info['message']}")
+                            st.write("Existing bookings:")
+                            for conflict in conflict_info['conflicts']:
+                                st.write(f"- {conflict['client_name']}: {conflict['start_date']} to {conflict['end_date']}")
+                            st.warning("⚠️ You cannot book this room. Either choose a different room or use 'Skip - Send to Pending' mode.")
+                        else:
+                            st.success(f"✅ Room available: {conflict_info['message']}")
 
         # Notes for Room Boss (especially useful for staff)
         room_notes = st.text_area(
