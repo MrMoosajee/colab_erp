@@ -486,3 +486,225 @@ class DeviceManager:
                 
         except Exception as e:
             return {'success': False, 'error': str(e)}
+
+    # =========================================================================
+    # INVENTORY DASHBOARD METHODS
+    # =========================================================================
+
+    def get_inventory_summary(self) -> Dict:
+        """
+        Get overall inventory summary statistics.
+        
+        Returns:
+            Dict with total, available, assigned, offsite counts
+        """
+        try:
+            query = """
+                SELECT 
+                    COUNT(*) as total_devices,
+                    COUNT(CASE WHEN status = 'available' THEN 1 END) as available,
+                    COUNT(CASE WHEN status = 'assigned' THEN 1 END) as assigned,
+                    COUNT(CASE WHEN status = 'offsite' THEN 1 END) as offsite
+                FROM devices
+                WHERE status != 'retired'
+            """
+            
+            result = db.run_query(query)
+            
+            if result.empty:
+                return {
+                    'total_devices': 0,
+                    'available': 0,
+                    'assigned': 0,
+                    'offsite': 0,
+                    'available_percent': 0
+                }
+            
+            total = int(result.iloc[0]['total_devices'])
+            available = int(result.iloc[0]['available'])
+            
+            return {
+                'total_devices': total,
+                'available': available,
+                'assigned': int(result.iloc[0]['assigned']),
+                'offsite': int(result.iloc[0]['offsite']),
+                'available_percent': (available / total * 100) if total > 0 else 0
+            }
+            
+        except Exception as e:
+            print(f"Error getting inventory summary: {e}")
+            return {
+                'total_devices': 0,
+                'available': 0,
+                'assigned': 0,
+                'offsite': 0,
+                'available_percent': 0
+            }
+
+    def get_device_categories(self) -> pd.DataFrame:
+        """
+        Get all device categories.
+        
+        Returns:
+            DataFrame with category id and name
+        """
+        query = "SELECT id, name FROM device_categories ORDER BY name"
+        return db.run_query(query)
+
+    def get_category_stats(self, category_id: int) -> Dict:
+        """
+        Get statistics for a specific device category.
+        
+        Args:
+            category_id: The category ID
+            
+        Returns:
+            Dict with total, available, and low_stock flag
+        """
+        try:
+            query = """
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT(CASE WHEN status = 'available' THEN 1 END) as available
+                FROM devices
+                WHERE category_id = %s
+                AND status != 'retired'
+            """
+            
+            result = db.run_query(query, (category_id,))
+            
+            if result.empty:
+                return {'total': 0, 'available': 0, 'low_stock': True}
+            
+            total = int(result.iloc[0]['total'])
+            available = int(result.iloc[0]['available'])
+            
+            return {
+                'total': total,
+                'available': available,
+                'low_stock': available < 3  # Threshold of 3 devices
+            }
+            
+        except Exception as e:
+            print(f"Error getting category stats: {e}")
+            return {'total': 0, 'available': 0, 'low_stock': True}
+
+    def get_devices_detailed(
+        self,
+        status: Optional[str] = None,
+        category: Optional[str] = None,
+        serial_search: Optional[str] = None
+    ) -> pd.DataFrame:
+        """
+        Get detailed device list with optional filters.
+        
+        Args:
+            status: Filter by status (optional)
+            category: Filter by category name (optional)
+            serial_search: Search by serial number (optional)
+            
+        Returns:
+            DataFrame with device details
+        """
+        query = """
+            SELECT 
+                d.serial_number,
+                d.name,
+                dc.name as category,
+                d.status,
+                d.office_account,
+                d.anydesk_id,
+                CASE 
+                    WHEN b.id IS NOT NULL THEN b.client_name
+                    ELSE NULL
+                END as current_assignment,
+                CASE 
+                    WHEN b.id IS NOT NULL THEN upper(b.booking_period)::date
+                    ELSE NULL
+                END as assigned_until
+            FROM devices d
+            JOIN device_categories dc ON d.category_id = dc.id
+            LEFT JOIN booking_device_assignments bda ON d.id = bda.device_id
+                AND bda.id = (
+                    SELECT MAX(id) FROM booking_device_assignments 
+                    WHERE device_id = d.id
+                )
+            LEFT JOIN bookings b ON bda.booking_id = b.id
+                AND b.status NOT IN ('cancelled', 'completed')
+                AND upper(b.booking_period) >= CURRENT_DATE
+            WHERE d.status != 'retired'
+        """
+        
+        params = []
+        
+        if status and status != 'All':
+            query += " AND d.status = %s"
+            params.append(status.lower())
+        
+        if category and category != 'All':
+            query += " AND dc.name = %s"
+            params.append(category)
+        
+        if serial_search:
+            query += " AND d.serial_number ILIKE %s"
+            params.append(f"%{serial_search}%")
+        
+        query += " ORDER BY dc.name, d.serial_number"
+        
+        return db.run_query(query, tuple(params) if params else None)
+
+    def get_recent_activity(self, limit: int = 20) -> pd.DataFrame:
+        """
+        Get recent inventory activity.
+        
+        Args:
+            limit: Maximum number of records to return
+            
+        Returns:
+            DataFrame with recent activity
+        """
+        query = """
+            SELECT 
+                bda.assigned_at as timestamp,
+                CASE 
+                    WHEN bda.device_id IS NULL THEN 'Device Requested'
+                    ELSE 'Device Assigned'
+                END as action,
+                COALESCE(d.serial_number, 'Pending') as device_serial,
+                u.username as user,
+                COALESCE(b.client_name, 'N/A') as details
+            FROM booking_device_assignments bda
+            LEFT JOIN devices d ON bda.device_id = d.id
+            LEFT JOIN users u ON bda.assigned_by = u.user_id
+            LEFT JOIN bookings b ON bda.booking_id = b.id
+            ORDER BY bda.assigned_at DESC
+            LIMIT %s
+        """
+        
+        return db.run_query(query, (limit,))
+
+    def export_inventory_csv(self) -> str:
+        """
+        Export full inventory to CSV format.
+        
+        Returns:
+            CSV string of inventory data
+        """
+        query = """
+            SELECT 
+                d.serial_number,
+                d.name,
+                dc.name as category,
+                d.status,
+                d.office_account,
+                d.anydesk_id,
+                d.purchase_date,
+                d.notes
+            FROM devices d
+            JOIN device_categories dc ON d.category_id = dc.id
+            WHERE d.status != 'retired'
+            ORDER BY dc.name, d.serial_number
+        """
+        
+        df = db.run_query(query)
+        return df.to_csv(index=False)

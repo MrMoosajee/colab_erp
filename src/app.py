@@ -578,12 +578,244 @@ def render_new_room_booking():
     st.header("📝 New Room Booking")
 
 def render_new_device_booking():
+    """
+    Device-only booking (off-site rental) without room booking.
+    For clients who just want to rent devices.
+    """
     st.header("🖥️ New Device Booking")
-    st.info("🚧 Coming Soon - Device booking functionality will be implemented in Phase 3")
+    st.caption("Request devices for off-site rental (no room required)")
+    
+    # Initialize service
+    availability_service = AvailabilityService()
+    booking_service = BookingService()
+    
+    # Client Information
+    st.subheader("📋 Client Information")
+    col1, col2 = st.columns(2)
+    with col1:
+        client_name = st.text_input("Client/Company Name *", key="device_client_name")
+        contact_person = st.text_input("Contact Person *", key="device_contact")
+    with col2:
+        client_email = st.text_input("Email *", key="device_email")
+        client_phone = st.text_input("Phone Number *", key="device_phone")
+    
+    st.divider()
+    
+    # Rental Period
+    st.subheader("📅 Rental Period")
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("Start Date *", min_value=date.today(), key="device_start")
+    with col2:
+        end_date = st.date_input("End Date *", min_value=start_date, key="device_end")
+    
+    if start_date > end_date:
+        st.error("❌ End date cannot be before start date")
+    
+    st.divider()
+    
+    # Device Requirements
+    st.subheader("💻 Device Requirements")
+    
+    # Get device categories
+    try:
+        categories_df = availability_service.get_device_categories()
+        if categories_df.empty:
+            st.error("❌ No device categories found")
+            return
+    except Exception as e:
+        st.error(f"❌ Error loading device categories: {e}")
+        return
+    
+    # Device requests
+    device_requests = []
+    
+    for idx, (_, category) in enumerate(categories_df.iterrows()):
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            qty = st.number_input(
+                f"{category['name']} Quantity",
+                min_value=0,
+                value=0,
+                step=1,
+                key=f"device_qty_{category['id']}"
+            )
+        with col2:
+            if qty > 0:
+                # Check availability
+                available = availability_service.get_available_device_count(
+                    category['id'], start_date, end_date
+                )
+                if available < qty:
+                    st.error(f"⚠️ Only {available} available")
+                else:
+                    st.success(f"✅ {available} available")
+                device_requests.append({
+                    'category_id': category['id'],
+                    'category_name': category['name'],
+                    'quantity': qty
+                })
+    
+    st.divider()
+    
+    # Off-site Details (required for device-only bookings)
+    st.subheader("🚚 Off-site Rental Details")
+    
+    rental_no = st.text_input("Rental Number/PO *")
+    contact_person_offsite = st.text_input("On-site Contact Person *")
+    contact_number = st.text_input("Contact Number *")
+    contact_email_offsite = st.text_input("Contact Email")
+    company = st.text_input("Company Name *")
+    address = st.text_area("Delivery Address *")
+    return_date = st.date_input("Expected Return Date *", value=end_date)
+    
+    st.divider()
+    
+    # Notes
+    notes = st.text_area("Additional Notes", key="device_notes")
+    
+    # Submit
+    if st.button("🚀 Submit Device Booking", type="primary", use_container_width=True):
+        errors = []
+        if not client_name:
+            errors.append("Client name is required")
+        if not contact_person:
+            errors.append("Contact person is required")
+        if not client_email:
+            errors.append("Email is required")
+        if not client_phone:
+            errors.append("Phone is required")
+        if not device_requests:
+            errors.append("Please request at least one device")
+        if not rental_no:
+            errors.append("Rental number is required")
+        if not company:
+            errors.append("Company name is required")
+        if not address:
+            errors.append("Delivery address is required")
+        
+        if errors:
+            for error in errors:
+                st.error(f"❌ {error}")
+        else:
+            try:
+                # Create a special booking with room_id=0 (off-site marker)
+                # This uses a special room or we can use NULL with a flag
+                result = booking_service.create_device_only_booking(
+                    client_name=client_name,
+                    client_contact_person=contact_person,
+                    client_email=client_email,
+                    client_phone=client_phone,
+                    start_date=start_date,
+                    end_date=end_date,
+                    device_requests=device_requests,
+                    rental_no=rental_no,
+                    offsite_contact=contact_person_offsite,
+                    offsite_phone=contact_number,
+                    offsite_email=contact_email_offsite,
+                    offsite_company=company,
+                    offsite_address=address,
+                    return_expected_date=return_date,
+                    notes=notes,
+                    created_by=st.session_state.get('username')
+                )
+                
+                if result['success']:
+                    st.success(f"✅ Device booking #{result['booking_id']} created successfully!")
+                    st.balloons()
+                else:
+                    st.error(f"❌ {result['message']}")
+            except Exception as e:
+                st.error(f"❌ System error: {e}")
 
 def render_pricing_catalog():
+    """
+    Pricing catalog for rooms and devices.
+    Shows current pricing tiers for different services.
+    """
     st.header("💰 Pricing Catalog")
-    st.info("🚧 Coming Soon - Room and device pricing information")
+    st.caption("Current rates for rooms, devices, and services")
+    
+    # Room Pricing
+    st.subheader("🏢 Room Rates (per day)")
+    
+    room_pricing = {
+        "Standard Training Room (≤20 ppl)": "R850",
+        "Large Training Room (21-40 ppl)": "R1,200",
+        "Conference Room": "R1,500",
+        "A302 Office": "R2,500",
+        "A303 Office": "R2,500",
+        "Vision Suite": "R3,000"
+    }
+    
+    for room, price in room_pricing.items():
+        col1, col2 = st.columns([3, 1])
+        col1.write(f"**{room}**")
+        col2.write(f"**{price}**")
+    
+    st.divider()
+    
+    # Device Pricing
+    st.subheader("💻 Device Rental Rates")
+    
+    device_pricing = {
+        "Laptop (Daily)": "R150",
+        "Laptop (Weekly)": "R750",
+        "Laptop (Monthly)": "R2,500",
+        "Desktop (Daily)": "R120",
+        "Desktop (Weekly)": "R600",
+        "Desktop (Monthly)": "R2,000"
+    }
+    
+    for device, price in device_pricing.items():
+        col1, col2 = st.columns([3, 1])
+        col1.write(f"**{device}**")
+        col2.write(f"**{price}**")
+    
+    st.divider()
+    
+    # Catering Pricing
+    st.subheader("☕ Catering Rates (per person)")
+    
+    catering_pricing = {
+        "Coffee/Tea Station": "R25",
+        "Morning Pastry": "R35",
+        "Morning Sandwiches": "R55",
+        "Lunch (In-house)": "R95",
+        "Water Bottle": "R15",
+        "Stationery (Pen & Book)": "R45"
+    }
+    
+    for item, price in catering_pricing.items():
+        col1, col2 = st.columns([3, 1])
+        col1.write(f"**{item}**")
+        col2.write(f"**{price}**")
+    
+    st.divider()
+    
+    # Package Deals
+    st.subheader("📦 Package Deals")
+    
+    with st.expander("Training Package (Full Day)"):
+        st.write("**R1,500 per person**")
+        st.write("Includes:")
+        st.write("• Room rental")
+        st.write("• Laptop")
+        st.write("• Coffee/Tea Station")
+        st.write("• Morning pastry")
+        st.write("• Lunch")
+        st.write("• Stationery")
+    
+    with st.expander("Meeting Package (Half Day)"):
+        st.write("**R850 per person**")
+        st.write("Includes:")
+        st.write("• Room rental (4 hours)")
+        st.write("• Coffee/Tea Station")
+        st.write("• Morning or afternoon snack")
+    
+    # Footer
+    st.divider()
+    st.caption("💡 All prices exclude VAT. Bulk discounts available for bookings >10 people. Contact admin for custom quotes.")
 
 def render_pending_approvals():
     """
@@ -742,8 +974,176 @@ def render_pending_approvals():
                             st.error(f"❌ {result['error']}")
 
 def render_inventory_dashboard():
+    """
+    Complete Inventory Dashboard showing device stock levels,
+    assignments, and availability status.
+    """
     st.header("📦 Inventory Dashboard")
-    st.info("🚧 Coming Soon - Device inventory management")
+    st.caption("Real-time device inventory and availability status")
+    
+    # Initialize service
+    device_manager = DeviceManager()
+    
+    # Summary Metrics
+    st.subheader("📊 Inventory Summary")
+    
+    try:
+        # Get inventory summary
+        summary = device_manager.get_inventory_summary()
+        
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Devices", summary.get('total_devices', 0))
+        col2.metric("Available", summary.get('available', 0), delta=f"{summary.get('available_percent', 0):.0f}%")
+        col3.metric("Assigned", summary.get('assigned', 0))
+        col4.metric("Off-site", summary.get('offsite', 0))
+    except Exception as e:
+        st.error(f"Error loading summary: {e}")
+    
+    st.divider()
+    
+    # Device Categories
+    st.subheader("💻 Devices by Category")
+    
+    try:
+        categories = device_manager.get_device_categories()
+        
+        if categories.empty:
+            st.warning("No device categories found")
+        else:
+            # Create columns for each category
+            cols = st.columns(len(categories))
+            
+            for idx, (_, cat) in enumerate(categories.iterrows()):
+                with cols[idx]:
+                    st.write(f"**{cat['name']}**")
+                    
+                    # Get stats for this category
+                    cat_stats = device_manager.get_category_stats(cat['id'])
+                    
+                    st.metric("Total", cat_stats.get('total', 0))
+                    st.metric("Available", cat_stats.get('available', 0))
+                    
+                    if cat_stats.get('low_stock', False):
+                        st.warning("⚠️ Low Stock!")
+    except Exception as e:
+        st.error(f"Error loading categories: {e}")
+    
+    st.divider()
+    
+    # Detailed Device List
+    st.subheader("📋 Device Inventory Details")
+    
+    # Filters
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        filter_status = st.selectbox(
+            "Status Filter",
+            options=["All", "Available", "Assigned", "Off-site", "Maintenance"],
+            key="inventory_status_filter"
+        )
+    with col2:
+        filter_category = st.selectbox(
+            "Category Filter",
+            options=["All"] + categories['name'].tolist() if not categories.empty else ["All"],
+            key="inventory_category_filter"
+        )
+    with col3:
+        search_serial = st.text_input("Search by Serial", key="inventory_search")
+    
+    try:
+        # Get filtered device list
+        devices_df = device_manager.get_devices_detailed(
+            status=filter_status if filter_status != "All" else None,
+            category=filter_category if filter_category != "All" else None,
+            serial_search=search_serial if search_serial else None
+        )
+        
+        if devices_df.empty:
+            st.info("No devices match the selected filters")
+        else:
+            st.write(f"Showing {len(devices_df)} devices")
+            
+            # Display with color coding
+            def color_status(status):
+                if status == 'available':
+                    return 'background-color: #d4edda'
+                elif status == 'assigned':
+                    return 'background-color: #fff3cd'
+                elif status == 'offsite':
+                    return 'background-color: #f8d7da'
+                return ''
+            
+            # Apply styling
+            styled_df = devices_df.style.applymap(
+                color_status, subset=['status']
+            )
+            
+            st.dataframe(
+                styled_df,
+                column_config={
+                    'serial_number': 'Serial Number',
+                    'name': 'Device Name',
+                    'category': 'Category',
+                    'status': 'Status',
+                    'office_account': 'Office Account',
+                    'anydesk_id': 'AnyDesk ID',
+                    'current_assignment': 'Current Assignment',
+                    'assigned_until': 'Assigned Until'
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+    except Exception as e:
+        st.error(f"Error loading device list: {e}")
+    
+    st.divider()
+    
+    # Recent Activity
+    st.subheader("📈 Recent Inventory Activity")
+    
+    try:
+        activity_df = device_manager.get_recent_activity(limit=20)
+        
+        if activity_df.empty:
+            st.info("No recent activity")
+        else:
+            st.dataframe(
+                activity_df,
+                column_config={
+                    'timestamp': 'Time',
+                    'action': 'Action',
+                    'device_serial': 'Device',
+                    'user': 'User',
+                    'details': 'Details'
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+    except Exception as e:
+        st.error(f"Error loading activity: {e}")
+    
+    st.divider()
+    
+    # Export Options
+    st.subheader("📤 Export Options")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📥 Export Full Inventory (CSV)"):
+            try:
+                csv_data = device_manager.export_inventory_csv()
+                st.download_button(
+                    label="Download CSV",
+                    data=csv_data,
+                    file_name=f"inventory_export_{date.today()}.csv",
+                    mime="text/csv"
+                )
+            except Exception as e:
+                st.error(f"Export failed: {e}")
+    
+    with col2:
+        if st.button("📊 Generate Inventory Report"):
+            st.info("📄 Report generation feature - connect to reporting service")
 
 def render_notifications():
     """

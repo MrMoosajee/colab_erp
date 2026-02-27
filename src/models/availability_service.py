@@ -307,3 +307,76 @@ class AvailabilityService:
         finally:
             if conn:
                 self.connection_pool.putconn(conn)
+
+    def get_device_categories(self) -> pd.DataFrame:
+        """
+        Get all device categories.
+        
+        Returns:
+            DataFrame with category id and name
+        """
+        conn = None
+        try:
+            conn = self.connection_pool.getconn()
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, name FROM device_categories ORDER BY name")
+                rows = cur.fetchall()
+                columns = [desc[0] for desc in cur.description]
+                return pd.DataFrame(rows, columns=columns)
+        except Exception as e:
+            print(f"Error getting device categories: {e}")
+            return pd.DataFrame()
+        finally:
+            if conn:
+                self.connection_pool.putconn(conn)
+
+    def get_available_device_count(
+        self,
+        category_id: int,
+        start_date: date,
+        end_date: date
+    ) -> int:
+        """
+        Get count of available devices for a specific category.
+        
+        Args:
+            category_id: The device category ID
+            start_date: Start of booking period
+            end_date: End of booking period
+            
+        Returns:
+            Integer count of available devices
+        """
+        conn = None
+        try:
+            conn = self.connection_pool.getconn()
+            with conn.cursor() as cur:
+                # FIX: Create timezone-aware datetimes in UTC
+                utc = pytz.UTC
+                start_dt = utc.localize(datetime.combine(start_date, datetime.min.time()).replace(hour=7, minute=30))
+                end_dt = utc.localize(datetime.combine(end_date, datetime.min.time()).replace(hour=16, minute=30))
+
+                query = """
+                    SELECT COUNT(d.id)
+                    FROM devices d
+                    WHERE d.category_id = %s
+                    AND d.status = 'available'
+                    AND d.id NOT IN (
+                        SELECT bda.device_id
+                        FROM booking_device_assignments bda
+                        JOIN bookings b ON bda.booking_id = b.id
+                        WHERE b.status = 'confirmed'
+                        AND b.booking_period && tstzrange(%s, %s, '[)')
+                        AND bda.device_id IS NOT NULL
+                    )
+                """
+
+                cur.execute(query, (category_id, start_dt, end_dt))
+                return cur.fetchone()[0]
+
+        except Exception as e:
+            print(f"Error getting available device count: {e}")
+            return 0
+        finally:
+            if conn:
+                self.connection_pool.putconn(conn)
