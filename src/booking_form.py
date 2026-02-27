@@ -110,11 +110,12 @@ def render_enhanced_booking_form():
                 key="seg_end"
             )
 
-        # Validate date range manually (instead of using min_value which conflicts with session state)
+        # Validate date range and auto-update end date if needed
         if seg_start > seg_end:
-            st.error("❌ Start date cannot be after end date")
-            # Auto-correct end date to match start date
+            st.info("ℹ️ End date updated to match start date")
+            st.session_state.booking_end_date = seg_start
             seg_end = seg_start
+            st.rerun()
 
         # Room selection (only for admin in 'select_room' mode)
         selected_room_id = None
