@@ -110,12 +110,9 @@ def render_enhanced_booking_form():
                 key="seg_end"
             )
 
-        # Validate date range and auto-update end date if needed
+        # Validate date range - just show error if invalid
         if seg_start > seg_end:
-            st.info("ℹ️ End date updated to match start date")
-            st.session_state.booking_end_date = seg_start
-            seg_end = seg_start
-            st.rerun()
+            st.error("❌ Start date cannot be after end date")
 
         # Room selection (only for admin in 'select_room' mode)
         selected_room_id = None
