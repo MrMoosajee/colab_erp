@@ -11,6 +11,7 @@ sys.path.insert(0, str(project_root))
 import src.db as db
 from datetime import date, datetime
 from typing import Optional, Dict, Any
+from .availability_service import AvailabilityService
 
 
 class BookingService:
@@ -22,6 +23,7 @@ class BookingService:
     def __init__(self):
         """Initialize BookingService with database connection."""
         self.connection_pool = db.get_db_pool()
+        self.availability_service = AvailabilityService()
 
     def create_enhanced_booking(
         self,
@@ -57,32 +59,35 @@ class BookingService:
                 start_dt = datetime.combine(start_date, datetime.min.time()).replace(hour=7, minute=30)
                 end_dt = datetime.combine(end_date, datetime.min.time()).replace(hour=16, minute=30)
 
+                # Calculate total headcount
+                total_headcount = num_learners + num_facilitators
+
                 cur.execute(
                     """
                     INSERT INTO bookings (
                         room_id, booking_period, client_name, status,
-                        num_learners, num_facilitators,
+                        num_learners, num_facilitators, headcount,
                         client_contact_person, client_email, client_phone,
                         coffee_tea_station, morning_catering, lunch_catering, catering_notes,
                         stationery_needed, water_bottles,
                         devices_needed, device_type_preference,
                         room_boss_notes,
-                        created_by, created_at
+                        created_at
                     ) VALUES (
                         %s, tstzrange(%s, %s, '[)'), %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                        %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
                     )
                     RETURNING id
                     """,
                     (
                         room_id, start_dt, end_dt, client_name, status,
-                        num_learners, num_facilitators,
+                        num_learners, num_facilitators, total_headcount,
                         client_contact_person, client_email, client_phone,
                         coffee_tea_station, morning_catering, lunch_catering, catering_notes,
                         stationery_needed, water_bottles,
                         devices_needed, device_type_preference,
-                        room_boss_notes,
-                        created_by
+                        room_boss_notes
                     )
                 )
 

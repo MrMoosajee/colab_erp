@@ -144,7 +144,7 @@ class AvailabilityService:
 
                 if exclude_booking_id:
                     query += " AND b.id != %s"
-                    params.append(exclude_booking_id)
+                    params.append(int(exclude_booking_id))
 
                 query += " ORDER BY lower(b.booking_period)"
 

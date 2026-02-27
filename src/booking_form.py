@@ -351,8 +351,7 @@ def render_enhanced_booking_form():
                         devices_needed=devices_needed,
                         device_type_preference=device_type if device_type != 'any' else None,
                         room_boss_notes=segment.get('room_notes'),
-                        status=status,
-                        created_by=st.session_state.get('username')
+                        status=status
                     )
 
                     if result['success']:
