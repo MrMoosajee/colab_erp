@@ -1,26 +1,138 @@
-# Security (CRITICAL)
+# =============================================================================
+# COLAB ERP SECURITY - GITIGNORE
+# Version: 2.2.0
+# Purpose: Prevent data leaks and protect sensitive information
+# Last Updated: 2026-02-17
+# =============================================================================
+
+# ============================================================================
+# CRITICAL SECURITY - NEVER COMMIT THESE
+# ============================================================================
+
+# Streamlit Secrets - Contains database credentials and API keys
 .streamlit/secrets.toml
+**/.streamlit/secrets.toml
+
+# Environment Variables
 .env
+.env.*
+.env.local
+.env.development
+.env.production
+.env.test
+
+# SSH Keys and Certificates
 *.pem
 *.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa
+id_rsa.pub
+id_dsa
+id_dsa.pub
+id_ecdsa
+id_ecdsa.pub
+id_ed25519
+id_ed25519.pub
+known_hosts
+.ssh/
 
-# Python / Environment
+# Private Keys & Secrets
+*.private
+*.secret
+credentials*
+secrets*
+config.local.toml
+
+# Database Dumps & Sensitive Data
+dump.rdb
+*.dump
+*.sql
+database_dump/
+backups/
+*.backup
+collabdb_backup.*
+
+# Logs (may contain sensitive data)
+*.log
+logs/
+log/
+app.log
+debug.log
+error.log
+access.log
+
+# Local Database Files
+*.sqlite3
+*.sqlite
+*.db
+*.db-journal
+*.db-wal
+
+# ============================================================================
+# PYTHON / VIRTUAL ENVIRONMENT
+# ============================================================================
 venv/
+env/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
 
-# IDE / JetBrains (Keep repo clean)
+# ============================================================================
+# IDE / DEVELOPMENT TOOLS
+# ============================================================================
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# OS Junk
+*~
 .DS_Store
 Thumbs.db
+*.sublime-project
+*.sublime-workspace
 
-# Logs & Databases
-*.log
-*.sqlite3
-*.db
+# ============================================================================
+# OS / SYSTEM FILES
+# ============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# ============================================================================
+# BUILD / DEPLOYMENT ARTIFACTS
+# ============================================================================
+dist/
+build/
+*.egg-info/
+*.egg
+*.whl
+*.tar.gz
+
+# ============================================================================
+# TESTING / COVERAGE
+# ============================================================================
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+*.cover
+*.py,cover
+
+# ============================================================================
+# MISCELLANEOUS
+# ============================================================================
+*.bak
+*.tmp
+*.temp
+cache/

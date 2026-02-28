@@ -1,7 +1,7 @@
 # Colab ERP - System Architecture
 
 **Version:** v2.2.3  
-**Last Updated:** February 27, 2026  
+**Last Updated:** February 28, 2026  
 **Classification:** Internal Confidential
 
 ---
@@ -16,7 +16,8 @@
 6. [Security Model](#security-model)
 7. [Deployment Architecture](#deployment-architecture)
 8. [Scalability Considerations](#scalability-considerations)
-9. [Future Architecture (Phase 4)](#future-architecture-phase-4)
+9. [Recent Changes (v2.2.3)](#recent-changes-v223)
+10. [Future Architecture (Phase 4)](#future-architecture-phase-4)
 
 ---
 
@@ -53,6 +54,7 @@
 │  │  │ • Calendar   │  │ • Validation │  │ │RoomApprovalSvc   │ │    │  │
 │  │  │ • Dashboard  │  │ • Conflict   │  │ │DeviceManager     │ │    │  │
 │  │  │ • Approvals  │  │   detection  │  │ │NotificationMgr   │ │    │  │
+│  │  │ • Pricing    │  │ • Excel import│  │ │PricingService    │ │    │  │
 │  │  └──────────────┘  └──────────────┘  │ └──────────────────┘ │    │  │
 │  │                                    └──────────────────────┘    │  │
 │  │                                                                    │  │
@@ -66,13 +68,20 @@
 │                         DATA LAYER                                       │
 │                                                                          │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │                 PostgreSQL 14+                                   │    │
+│  │                 PostgreSQL 16+                                   │    │
 │  │                                                                  │    │
 │  │  Core Tables:                                                    │    │
 │  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌───────────┐ │    │
 │  │  │   rooms     │ │  bookings   │ │   devices   │ │   users   │ │    │
-│  │  │  (24 rows)  │ │ (807+ rows) │ │  (inventory)│ │(auth/data)│ │    │
+│  │  │  (24 rows)  │ │ (807+ rows) │ │  (110+)     │ │(auth/data)│ │    │
 │  │  └─────────────┘ └─────────────┘ └─────────────┘ └───────────┘ │    │
+│  │                                                                  │    │
+│  │  Supporting Tables:                                              │    │
+│  │  ┌─────────────────┐ ┌──────────────────┐ ┌───────────────────┐ │    │
+│  │  │pricing_catalog  │ │offsite_rentals   │ │booking_device_    │ │    │
+│  │  │device_categories│ │device_movement_  │ │  assignments      │ │    │
+│  │  │notification_log │ │     log          │ │stock_notifications │ │    │
+│  │  └─────────────────┘ └──────────────────┘ └───────────────────┘ │    │
 │  │                                                                  │    │
 │  │  Key Features:                                                   │    │
 │  │  • tstzrange for booking periods                                │    │
@@ -125,7 +134,7 @@ User fills form (booking_form.py)
         │
         ▼
 ┌─────────────────────────────────────────────────────────┐
-│ Database Insert (booking_service.py)                   │
+│ Database Insert (booking_service.py)                     │
 │ • booking_period: tstzrange(start, end)               │
 │ • room_id: int or NULL                                │
 │ • status: 'Confirmed' or 'Pending'                    │
@@ -193,6 +202,36 @@ IT Staff opens Device Assignment Queue
 └─────────────────────────────────────────────────────────┘
 ```
 
+### Excel Import Flow
+
+```
+Excel File (Colab 2026 Schedule.xlsx)
+    │
+    ▼
+┌─────────────────────────────────────────────────────────┐
+│ Parse Excel (import_excel_schedule.py)                 │
+│ • Month sheets (Jan-Dec 2026)                          │
+│ • Room columns → Room IDs                              │
+│ • Entry patterns: "Client 25+1", "25 + 18 laptops"    │
+└─────────────────────┬─────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────┐
+│ Create Bookings                                         │
+│ • Daily bookings for each entry                        │
+│ • Long-term rentals: Siyaya, Melissa                  │
+│ • Auto-approved status                                │
+└─────────────────────┬─────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────┐
+│ Database Insert                                         │
+│ • 713+ bookings created (Feb 2026 import)             │
+│ • TECH tenant default                                 │
+│ • Status: Approved                                    │
+└─────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## Technology Stack
@@ -203,13 +242,14 @@ IT Staff opens Device Assignment Queue
 |-------|-----------|---------|---------|
 | **Frontend** | Streamlit | 1.28+ | Web UI framework |
 | **Backend** | Python | 3.9+ | Application logic |
-| **Database** | PostgreSQL | 14+ | Primary data store |
+| **Database** | PostgreSQL | 16+ | Primary data store |
 | **Connection** | psycopg2 | 2.9+ | PostgreSQL adapter |
 | **Pooling** | psycopg2.pool | - | Connection management |
 | **Auth** | bcrypt | 4.0+ | Password hashing |
 | **Data** | pandas | 2.0+ | Data manipulation |
 | **Config** | toml | - | Secrets management |
 | **Timezone** | pytz | 2023.3+ | Timezone handling |
+| **Excel** | openpyxl | 3.0+ | Excel file processing |
 
 ### Dependencies (requirements.txt)
 
@@ -220,6 +260,7 @@ pandas>=2.0.0
 bcrypt>=4.0.0
 python-dateutil>=2.8.0
 pytz>=2023.3
+openpyxl>=3.0.0
 ```
 
 ---
@@ -235,12 +276,19 @@ CREATE TABLE rooms (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     max_capacity INTEGER NOT NULL,
+    room_type VARCHAR(50),
+    has_devices BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
     parent_room_id INTEGER REFERENCES rooms(id)
 );
 ```
 
 **Description:** 24 training rooms and offices  
+**Current Data:**
+- Excellence, Inspiration, Honesty, Gratitude, Ambition, Perseverance, Courage, Possibilities
+- Motivation, A302, A303, Success 10, Respect 10, Innovation (12), Dedication
+- Integrity (15), Empower, Focus, Growth, Wisdom (8), Vision, Potential, Synergy, Ambition+Perseverance
+
 **Key Fields:**
 - `max_capacity`: Maximum room capacity for attendee validation
 - `is_active`: Soft delete flag
@@ -251,29 +299,41 @@ CREATE TABLE rooms (
 ```sql
 CREATE TABLE bookings (
     id SERIAL PRIMARY KEY,
-    room_id INTEGER REFERENCES rooms(id),
+    room_id INTEGER REFERENCES rooms(id) NOT NULL,
     booking_period TSTZRANGE NOT NULL,
     client_name VARCHAR(255) NOT NULL,
     status VARCHAR(20) DEFAULT 'Pending',
     tenant_id tenant_type NOT NULL DEFAULT 'TECH',
     
-    -- Phase 3 Fields
+    -- Phase 3 Fields (Attendees)
     num_learners INTEGER DEFAULT 0,
     num_facilitators INTEGER DEFAULT 0,
-    client_contact_person VARCHAR(255),
-    client_email VARCHAR(255),
-    client_phone VARCHAR(255),
+    headcount INTEGER DEFAULT 0,
+    
+    -- Phase 3 Fields (Client Contact)
+    client_contact_person VARCHAR(100),
+    client_email VARCHAR(100),
+    client_phone VARCHAR(20),
+    
+    -- Phase 3 Fields (Catering)
     coffee_tea_station BOOLEAN DEFAULT FALSE,
     morning_catering VARCHAR(50),
     lunch_catering VARCHAR(50),
     catering_notes TEXT,
+    
+    -- Phase 3 Fields (Supplies)
     stationery_needed BOOLEAN DEFAULT FALSE,
     water_bottles INTEGER DEFAULT 0,
+    
+    -- Phase 3 Fields (Devices)
     devices_needed INTEGER DEFAULT 0,
     device_type_preference VARCHAR(50),
+    
+    -- Phase 3 Fields (Notes)
     room_boss_notes TEXT,
     
-    -- Audit
+    -- Legacy Fields
+    end_date DATE,
     created_by VARCHAR(255),
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP,
@@ -281,15 +341,25 @@ CREATE TABLE bookings (
     -- Constraints
     CONSTRAINT no_overlapping_bookings 
         EXCLUDE USING gist (room_id WITH =, booking_period WITH &&) 
-        WHERE (room_id IS NOT NULL)
+        WHERE (room_id IS NOT NULL),
+    CONSTRAINT chk_morning_catering 
+        CHECK (morning_catering IS NULL OR morning_catering IN ('none', 'pastry', 'sandwiches')),
+    CONSTRAINT chk_lunch_catering 
+        CHECK (lunch_catering IS NULL OR lunch_catering IN ('none', 'self_catered', 'in_house')),
+    CONSTRAINT chk_device_preference 
+        CHECK (device_type_preference IS NULL OR device_type_preference IN ('any', 'laptops', 'desktops'))
 );
 ```
 
 **Key Features:**
-- `booking_period`: TSTZRANGE for timezone-aware periods
+- `booking_period`: TSTZRANGE for timezone-aware periods (07:30-16:30 daily)
 - Exclusion constraint prevents double-booking (only when room_id IS NOT NULL)
-- `room_id` can be NULL for Ghost Inventory (pending bookings)
-- Status workflow: Pending → Room Assigned → Confirmed
+- Status workflow: Pending → Confirmed
+- Current count: **807+ bookings** (growing daily)
+
+**Recent Imports:**
+- **713 bookings** imported from "Colab 2026 Schedule.xlsx" (February 2026)
+- Includes long-term rentals: Siyaya (Success 10), Melissa (Wisdom 8)
 
 #### devices
 
@@ -299,13 +369,16 @@ CREATE TABLE devices (
     serial_number VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(255),
     category_id INTEGER REFERENCES device_categories(id),
-    status VARCHAR(50) DEFAULT 'available',
+    status VARCHAR(20) DEFAULT 'available',
     office_account VARCHAR(255),
-    anydesk_id VARCHAR(255)
+    anydesk_id VARCHAR(255),
+    CONSTRAINT chk_device_status 
+        CHECK (status IN ('available', 'assigned', 'offsite', 'maintenance'))
 );
 ```
 
-**Description:** IT equipment inventory (laptops, desktops)
+**Description:** IT equipment inventory (laptops, desktops)  
+**Current count:** 110+ devices
 
 #### device_categories
 
@@ -335,7 +408,7 @@ CREATE TABLE booking_device_assignments (
 );
 ```
 
-**Description:** Links devices to bookings
+**Description:** Links devices to bookings with assignment tracking
 
 #### offsite_rentals
 
@@ -351,24 +424,45 @@ CREATE TABLE offsite_rentals (
     company VARCHAR(255),
     address TEXT,
     return_expected_date DATE,
-    returned_at TIMESTAMP
+    returned_at TIMESTAMP,
+    rental_form_generated BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 ```
 
-**Description:** Tracks devices rented for off-site use
+**Description:** Tracks devices rented for off-site use with full contact details
 
-#### users
+#### pricing_catalog (NEW v2.2.3)
 
 ```sql
-CREATE TABLE users (
-    user_id VARCHAR(255) PRIMARY KEY,
-    username VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255),
-    role VARCHAR(50) NOT NULL
+CREATE TABLE pricing_catalog (
+    id SERIAL PRIMARY KEY,
+    item_type VARCHAR(50) NOT NULL,  -- 'room', 'device_category', 'catering'
+    item_id INTEGER,                 -- FK to rooms.id or device_categories.id
+    item_name VARCHAR(255),            -- For catering items (when item_id is NULL)
+    daily_rate DECIMAL(10,2),
+    weekly_rate DECIMAL(10,2),
+    monthly_rate DECIMAL(10,2),
+    unit VARCHAR(50),                  -- 'per day', 'per device', 'per person'
+    pricing_tier VARCHAR(20) DEFAULT 'standard',  -- 'standard', 'premium', 'discounted'
+    notes TEXT,
+    effective_date DATE DEFAULT CURRENT_DATE,
+    expiry_date DATE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    created_by VARCHAR(100),
+    updated_by VARCHAR(100),
+    CONSTRAINT chk_item_type 
+        CHECK (item_type IN ('room', 'device_category', 'catering')),
+    CONSTRAINT chk_pricing_tier 
+        CHECK (pricing_tier IN ('standard', 'premium', 'discounted'))
 );
 ```
 
-**Roles:** admin, training_facility_admin, it_rental_admin, it_boss, room_boss, staff
+**Description:** Dynamic pricing management for rooms, device categories, and catering  
+**Access Control:** Admin and IT admin roles only
 
 #### notification_log
 
@@ -386,7 +480,57 @@ CREATE TABLE notification_log (
 );
 ```
 
-**Description:** In-app notifications for IT Boss and Room Boss
+**Description:** In-app notifications for IT Boss and Room Boss  
+**Notification Types:**
+- `low_stock`: Device stock below threshold
+- `conflict_no_alternatives`: Device conflict with no alternatives available
+- `offsite_conflict`: Off-site rental conflicts
+- `return_overdue`: Devices not returned by expected date
+
+#### users
+
+```sql
+CREATE TABLE users (
+    user_id VARCHAR(255) PRIMARY KEY,
+    username VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255),
+    role VARCHAR(50) NOT NULL
+);
+```
+
+**Roles:** 
+- `admin`: Full system access
+- `training_facility_admin`: Dashboard, notifications, pricing
+- `it_rental_admin`: Same as training_facility_admin
+- `it_boss`: Notifications, device queue
+- `room_boss`: Notifications, pending approvals
+- `staff`: Calendar, bookings (pending only)
+
+### Supporting Tables
+
+#### device_movement_log
+- Tracks all device assignments/unassignments for AI learning
+- Fields: log_id, device_id, action, from_booking_id, to_booking_id, performed_by, reason, created_at
+
+#### stock_notifications
+- Low stock alerts for device categories
+- Fields: id, category, devices_available, devices_needed, notification_type, message, notified_it_boss, notified_room_boss, etc.
+
+#### in_app_notifications
+- General in-app notifications
+- Fields: id, recipient_role, notification_type, title, message, related_booking_id, is_read, created_at
+
+### Database Indexes
+
+```sql
+-- Performance indexes for common queries
+CREATE INDEX idx_bookings_tenant ON bookings(tenant_id);
+CREATE INDEX idx_bookings_status ON bookings(status) WHERE status = 'Pending';
+CREATE INDEX idx_bookings_period ON bookings USING GIST(booking_period);
+CREATE INDEX idx_offsite_rentals_assignment ON offsite_rentals(booking_device_assignment_id);
+CREATE INDEX idx_device_movement_device ON device_movement_log(device_id);
+CREATE INDEX idx_notifications_unread ON in_app_notifications(recipient_role, is_read, created_at DESC);
+```
 
 ---
 
@@ -403,7 +547,8 @@ src/models/
 ├── booking_service.py        # Booking creation with Phase 3 fields
 ├── room_approval_service.py  # Ghost Inventory workflow
 ├── device_manager.py         # Device assignment and tracking
-└── notification_manager.py   # In-app notifications
+├── notification_manager.py   # In-app notifications
+└── pricing_service.py        # Dynamic pricing management
 ```
 
 ### Design Principles
@@ -441,6 +586,34 @@ class SomeService:
                 self.connection_pool.putconn(conn)
 ```
 
+### Pricing Service (NEW v2.2.3)
+
+```python
+class PricingService:
+    """Dynamic pricing management for rooms, devices, and catering"""
+    
+    # Room pricing
+    def get_room_pricing(self) -> pd.DataFrame
+    def get_rooms_without_pricing(self) -> pd.DataFrame
+    def create_room_pricing(self, room_id, daily_rate, ...) -> Dict
+    
+    # Device pricing (collective by category)
+    def get_device_pricing(self) -> pd.DataFrame
+    def get_device_categories_without_pricing(self) -> pd.DataFrame
+    def create_device_category_pricing(self, category_id, daily_rate, ...) -> Dict
+    
+    # Catering pricing
+    def get_catering_pricing(self) -> pd.DataFrame
+    def get_catering_items(self) -> pd.DataFrame
+    def create_catering_pricing(self, item_name, unit_price, ...) -> Dict
+    
+    # Management
+    def update_pricing(self, pricing_id, ...) -> Dict
+    def delete_pricing(self, pricing_id) -> Dict  # Soft delete
+```
+
+**Access Control:** Only `admin` and `it_admin` roles can access pricing functionality.
+
 ---
 
 ## Security Model
@@ -454,15 +627,15 @@ class SomeService:
 
 ### Authorization (RBAC)
 
-| Role | Permissions |
-|------|-------------|
-| **admin** | Full system access, all menus, direct booking |
-| **training_facility_admin** | Dashboard, notifications, calendar, bookings, approvals |
-| **it_rental_admin** | Same as training_facility_admin |
-| **room_boss** | Notifications, pending approvals, calendar, bookings |
-| **it_boss** | Notifications, device queue, calendar, bookings |
-| **it_staff** | Device assignment queue, device operations |
-| **staff** | Calendar, bookings (pending only), pricing catalog |
+| Role | Permissions | Pricing Access |
+|------|-------------|----------------|
+| **admin** | Full system access | ✅ Yes |
+| **training_facility_admin** | Dashboard, notifications, calendar, bookings, approvals | ✅ Yes |
+| **it_rental_admin** | Same as training_facility_admin | ✅ Yes |
+| **room_boss** | Notifications, pending approvals, calendar, bookings | ❌ No |
+| **it_boss** | Notifications, device queue, calendar, bookings | ❌ No |
+| **it_staff** | Device assignment queue, device operations | ❌ No |
+| **staff** | Calendar, bookings (pending only) | ❌ No |
 
 ### Data Security
 
@@ -487,13 +660,15 @@ class SomeService:
 │  │ • Port: 8501                                     │ │
 │  │ • Process: Single instance                       │ │
 │  │ • Auto-restart: yes                              │ │
+│  │ • Status: 🟢 Online                              │ │
 │  └───────────────────────────────────────────────────┘ │
 │                          │                              │
 │  ┌───────────────────────────────────────────────────┐ │
-│  │ PostgreSQL 14+                                   │ │
+│  │ PostgreSQL 16+                                   │ │
 │  │ • Port: 5432                                     │ │
 │  │ • Max connections: 100                           │ │
 │  │ • Data: /var/lib/postgresql                      │ │
+│  │ • Bookings: 807+ rows                            │ │
 │  └───────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────┘
               │
@@ -544,13 +719,14 @@ WantedBy=multi-user.target
 
 ## Scalability Considerations
 
-### Current Scale
+### Current Scale (February 2026)
 
 - **Users:** 5-10 concurrent
 - **Bookings:** 807+ (growing daily)
 - **Rooms:** 24
-- **Devices:** ~100
+- **Devices:** 110+
 - **Performance:** <500ms response time
+- **Excel Import:** 713 bookings imported successfully
 
 ### Bottlenecks
 
@@ -563,7 +739,7 @@ WantedBy=multi-user.target
 
 | Users | Architecture Changes | Timeline |
 |-------|---------------------|----------|
-| 5-20 | Current (single server) | Now |
+| 5-20 | Current (single server) | ✅ Now |
 | 20-50 | Add Redis cache for calendar | Month 2 |
 | 50-100 | Database read replica | Month 3 |
 | 100+ | Load balancer + multiple Streamlit instances | Phase 4 |
@@ -588,6 +764,44 @@ WantedBy=multi-user.target
    - Only load visible date range
    - Exclude long-term offices from calendar queries
    - Materialized view for device availability
+
+---
+
+## Recent Changes (v2.2.3)
+
+### February 2026 Updates
+
+| Feature | Description | Impact |
+|---------|-------------|--------|
+| **Calendar Indicators** | Today (green), Weekend (purple), headcount display | Better visual tracking |
+| **Excel Import** | 713 bookings from "Colab 2026 Schedule.xlsx" | Bulk data migration |
+| **Pricing System** | Dynamic pricing catalog for rooms/devices/catering | Revenue management |
+| **Multi-Tenancy** | TECH/TRAINING divisions with shared assets | Business separation |
+| **Ghost Inventory** | Pending → Room Assignment workflow | Flexible booking |
+| **Enhanced Booking Form** | All 13 Phase 3 fields | Complete booking info |
+| **Device Management** | Manual assignment, off-site tracking | IT operations |
+| **Notifications** | IT Boss & Room Boss alerts | Proactive management |
+
+### Database Migrations Applied
+
+1. **v2.2_add_tenancy.sql**: Multi-tenancy support (TECH/TRAINING)
+2. **v2.4_device_assignment_system.sql**: Device management tables
+3. **v2.5_enhanced_booking_form.sql**: Phase 3 booking fields
+4. **v2.5.1_add_room_boss_notes.sql**: Room boss notes field
+
+### New Services Added
+
+1. **PricingService** (`src/models/pricing_service.py`)
+   - Room pricing management
+   - Device category pricing (collective)
+   - Catering pricing
+   - Role-based access control
+
+2. **Excel Import** (`src/import_excel_schedule.py`)
+   - Parse "Colab 2026 Schedule.xlsx"
+   - Pattern matching for headcount
+   - Long-term rental handling
+   - 713 bookings imported
 
 ---
 
@@ -617,6 +831,7 @@ Web App ─────┘      │
 3. **Notification Service**: Email, SMS, push notifications
 4. **Auth Service**: Authentication, authorization
 5. **Calendar Service**: Calendar generation, exports
+6. **Pricing Service**: Dynamic pricing management
 
 ### Event-Driven Architecture
 
@@ -647,6 +862,7 @@ Booking Created ──▶ Event Bus ──▶ Notification Service
 | DB Pool Usage | <70% | >90% |
 | Active Sessions | Track | N/A |
 | Booking Creation Rate | Track | N/A |
+| Device Stock Levels | >20% | <10% |
 
 ### Tools Planned
 
@@ -683,8 +899,14 @@ Booking Created ──▶ Event Bus ──▶ Notification Service
 - **Decision:** Manual assignment by serial number, logged for AI training
 - **Consequences:** More IT Staff work, better tracking
 
+### ADR-005: Dynamic Pricing Catalog (v2.2.3)
+- **Status:** Accepted
+- **Context:** Need flexible pricing for rooms, devices, and catering
+- **Decision:** pricing_catalog table with item_type discriminator
+- **Consequences:** Single table for all pricing types, simpler queries
+
 ---
 
-**Document Version:** 1.0.0  
+**Document Version:** 1.1.0  
 **Maintained by:** Chief Documentation Officer (CDO-001)  
-**Last Updated:** February 27, 2026
+**Last Updated:** February 28, 2026
