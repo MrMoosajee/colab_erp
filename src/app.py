@@ -17,6 +17,7 @@ from src.models import DeviceManager, NotificationManager, BookingService, Avail
 
 # Import enhanced booking form
 from src.booking_form import render_enhanced_booking_form
+from src.pricing_catalog import render_pricing_catalog as render_pricing_catalog_new
 
 # Page Config
 st.set_page_config(page_title="Colab ERP v2.2.0", layout="wide")
@@ -2009,7 +2010,8 @@ def main():
     elif choice == "New Device Booking":
         render_new_device_booking()
     elif choice == "Pricing Catalog":
-        render_pricing_catalog()
+        pricing_service = PricingService()
+        render_pricing_catalog_new(pricing_service, st.session_state['role'])
     elif choice == "Pending Approvals":
         render_pending_approvals()
     elif choice == "Inventory Dashboard":
