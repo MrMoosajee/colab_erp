@@ -174,7 +174,7 @@ def get_calendar_bookings(days_lookback=30):
 
 def get_calendar_grid(start_date, end_date):
     """
-    Fetches bookings for calendar grid view with device counts.
+    Fetches bookings for calendar grid view with full details.
     Returns bookings expanded across all days in their date range.
     
     Args:
@@ -184,8 +184,9 @@ def get_calendar_grid(start_date, end_date):
     Returns:
         DataFrame with columns:
         - room_id, room_name, booking_date, booking_id
-        - client_name, learners_count, facilitators_count, headcount
-        - device_count, status, tenant_id
+        - client_name, num_learners, num_facilitators, headcount
+        - coffee_tea_station, morning_catering, lunch_catering, stationery_needed
+        - devices_needed, device_count, status, tenant_id
     """
     sql = """
         WITH date_range AS (
@@ -198,9 +199,14 @@ def get_calendar_grid(start_date, end_date):
                 dr.booking_date,
                 b.id as booking_id,
                 b.client_name,
-                b.learners_count,
-                b.facilitators_count,
+                b.num_learners,
+                b.num_facilitators,
                 b.headcount,
+                b.coffee_tea_station,
+                b.morning_catering,
+                b.lunch_catering,
+                b.stationery_needed,
+                b.devices_needed,
                 b.status,
                 b.tenant_id,
                 COUNT(bda.device_id) as device_count
@@ -211,7 +217,10 @@ def get_calendar_grid(start_date, end_date):
                 AND b.status != 'Cancelled'
             LEFT JOIN booking_device_assignments bda ON b.id = bda.booking_id
             WHERE r.is_active = true
-            GROUP BY r.id, r.name, dr.booking_date, b.id, b.client_name, b.learners_count, b.facilitators_count, b.headcount, b.status, b.tenant_id
+            GROUP BY r.id, r.name, dr.booking_date, b.id, b.client_name, 
+                     b.num_learners, b.num_facilitators, b.headcount,
+                     b.coffee_tea_station, b.morning_catering, b.lunch_catering, 
+                     b.stationery_needed, b.devices_needed, b.status, b.tenant_id
         )
         SELECT * FROM expanded_bookings
         ORDER BY room_name, booking_date;

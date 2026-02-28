@@ -315,18 +315,43 @@ def render_week_view(today, rooms_df):
                 # Has booking
                 client = booking.iloc[0]['client_name']
                 
+                # Get actual learner and facilitator counts
+                learners = int(booking.iloc[0]['num_learners']) if pd.notna(booking.iloc[0].get('num_learners')) else 0
+                facilitators = int(booking.iloc[0]['num_facilitators']) if pd.notna(booking.iloc[0].get('num_facilitators')) else 1
+                devices = int(booking.iloc[0]['devices_needed']) if pd.notna(booking.iloc[0].get('devices_needed')) else 0
+                
+                # Catering indicators
+                coffee = booking.iloc[0].get('coffee_tea_station', False)
+                morning_catering = booking.iloc[0].get('morning_catering')
+                lunch_catering = booking.iloc[0].get('lunch_catering')
+                stationery = booking.iloc[0].get('stationery_needed', False)
+                
+                # Build catering indicators
+                indicators = []
+                if coffee:
+                    indicators.append("☕")
+                if morning_catering:
+                    indicators.append("🥪")
+                if lunch_catering:
+                    indicators.append("🍽️")
+                if stationery:
+                    indicators.append("📚")
+                if devices > 0:
+                    indicators.append(f"💻x{devices}")
+                
+                indicator_str = " ".join(indicators) if indicators else ""
+                
                 # Long-term offices: show client name only (no headcount)
                 if room_name in ['A302', 'A303', 'Vision']:
                     cell_text = f"<b>{client}</b>"
+                    if indicator_str:
+                        cell_text += f"<br/><small>{indicator_str}</small>"
                 else:
                     # Normal rooms with headcount
-                    learners = int(booking.iloc[0]['learners_count']) if pd.notna(booking.iloc[0]['learners_count']) else 0
-                    devices = int(booking.iloc[0]['device_count']) if pd.notna(booking.iloc[0]['device_count']) else 0
-                    
-                    # Excel format: learners + 1 facilitator (always minimum 1)
-                    cell_text = f"<b>{client}</b><br/>{learners}+1"
-                    if devices > 0:
-                        cell_text += f" (+ {devices})"
+                    total_headcount = learners + facilitators
+                    cell_text = f"<b>{client}</b><br/>{learners}+{facilitators}={total_headcount}"
+                    if indicator_str:
+                        cell_text += f"<br/><small>{indicator_str}</small>"
                 
                 # Cell styling
                 if is_today:
@@ -356,11 +381,14 @@ def render_week_view(today, rooms_df):
     
     # Legend
     st.markdown("---")
-    legend_cols = st.columns(4)
+    legend_cols = st.columns(7)
     legend_cols[0].markdown("<div style='background-color: #28a745; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>🟢 Today</div>", unsafe_allow_html=True)
     legend_cols[1].markdown("<div style='background-color: #6f42c1; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>🟣 Weekend</div>", unsafe_allow_html=True)
     legend_cols[2].markdown("<div style='background-color: #e3f2fd; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>🔵 Weekday</div>", unsafe_allow_html=True)
-    legend_cols[3].markdown("<div style='background-color: #d4edda; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>📅 Booked</div>", unsafe_allow_html=True)
+    legend_cols[3].markdown("<div style='font-size: 12px; text-align: center;'>☕ Coffee</div>", unsafe_allow_html=True)
+    legend_cols[4].markdown("<div style='font-size: 12px; text-align: center;'>🥪 Morning</div>", unsafe_allow_html=True)
+    legend_cols[5].markdown("<div style='font-size: 12px; text-align: center;'>🍽️ Lunch</div>", unsafe_allow_html=True)
+    legend_cols[6].markdown("<div style='font-size: 12px; text-align: center;'>💻 Devices</div>", unsafe_allow_html=True)
 
 def render_month_view(today, rooms_df):
     """Render month view with days as rows, rooms as columns - Excel style with horizontal scrolling"""
@@ -520,18 +548,43 @@ def render_month_view(today, rooms_df):
                 # Has booking
                 client = booking.iloc[0]['client_name']
                 
+                # Get actual learner and facilitator counts
+                learners = int(booking.iloc[0]['num_learners']) if pd.notna(booking.iloc[0].get('num_learners')) else 0
+                facilitators = int(booking.iloc[0]['num_facilitators']) if pd.notna(booking.iloc[0].get('num_facilitators')) else 1
+                devices = int(booking.iloc[0]['devices_needed']) if pd.notna(booking.iloc[0].get('devices_needed')) else 0
+                
+                # Catering indicators
+                coffee = booking.iloc[0].get('coffee_tea_station', False)
+                morning_catering = booking.iloc[0].get('morning_catering')
+                lunch_catering = booking.iloc[0].get('lunch_catering')
+                stationery = booking.iloc[0].get('stationery_needed', False)
+                
+                # Build catering indicators
+                indicators = []
+                if coffee:
+                    indicators.append("☕")
+                if morning_catering:
+                    indicators.append("🥪")
+                if lunch_catering:
+                    indicators.append("🍽️")
+                if stationery:
+                    indicators.append("📚")
+                if devices > 0:
+                    indicators.append(f"💻x{devices}")
+                
+                indicator_str = " ".join(indicators) if indicators else ""
+                
                 # Long-term offices: show client name only (no headcount)
                 if room_name in ['A302', 'A303', 'Vision']:
                     cell_text = f"<b>{client}</b>"
+                    if indicator_str:
+                        cell_text += f"<br/><small>{indicator_str}</small>"
                 else:
                     # Normal rooms with headcount
-                    learners = int(booking.iloc[0]['learners_count']) if pd.notna(booking.iloc[0]['learners_count']) else 0
-                    devices = int(booking.iloc[0]['device_count']) if pd.notna(booking.iloc[0]['device_count']) else 0
-                    
-                    # Excel format: learners + 1 facilitator
-                    cell_text = f"<b>{client}</b><br/>{learners}+1"
-                    if devices > 0:
-                        cell_text += f" (+ {devices})"
+                    total_headcount = learners + facilitators
+                    cell_text = f"<b>{client}</b><br/>{learners}+{facilitators}={total_headcount}"
+                    if indicator_str:
+                        cell_text += f"<br/><small>{indicator_str}</small>"
                 
                 # Cell styling (same as week view)
                 if is_today:
@@ -569,11 +622,14 @@ def render_month_view(today, rooms_df):
     
     # Legend (same as week view)
     st.markdown("---")
-    legend_cols = st.columns(4)
+    legend_cols = st.columns(7)
     legend_cols[0].markdown("<div style='background-color: #28a745; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>🟢 Today</div>", unsafe_allow_html=True)
     legend_cols[1].markdown("<div style='background-color: #6f42c1; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>🟣 Weekend</div>", unsafe_allow_html=True)
     legend_cols[2].markdown("<div style='background-color: #e3f2fd; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>🔵 Weekday</div>", unsafe_allow_html=True)
-    legend_cols[3].markdown("<div style='background-color: #d4edda; padding: 5px; border-radius: 4px; color: black; text-align: center; font-size: 12px;'>📅 Booked</div>", unsafe_allow_html=True)
+    legend_cols[3].markdown("<div style='font-size: 12px; text-align: center;'>☕ Coffee</div>", unsafe_allow_html=True)
+    legend_cols[4].markdown("<div style='font-size: 12px; text-align: center;'>🥪 Morning</div>", unsafe_allow_html=True)
+    legend_cols[5].markdown("<div style='font-size: 12px; text-align: center;'>🍽️ Lunch</div>", unsafe_allow_html=True)
+    legend_cols[6].markdown("<div style='font-size: 12px; text-align: center;'>💻 Devices</div>", unsafe_allow_html=True)
 
 def render_new_room_booking():
     st.header("📝 New Room Booking")
