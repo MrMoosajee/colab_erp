@@ -46,7 +46,7 @@ Colab ERP is a comprehensive Enterprise Resource Planning system designed for [C
 - Global exclusion constraints prevent double-booking across all tenants (shared physical assets)
 
 #### Ghost Inventory Room Booking (Phase 3) ✅
-- Staff create bookings without immediate room assignment
+- Client create bookings without immediate room assignment
 - Room Boss interface for pending approvals
 - Conflict detection with override capability
 - Multi-room bookings (one client, multiple date segments)
@@ -100,7 +100,7 @@ Colab ERP is a comprehensive Enterprise Resource Planning system designed for [C
   - **Admin**: Full access including dashboard and pricing
   - **Room Boss**: Pending approvals, notifications (NO pricing)
   - **IT Staff**: Device assignment queue (NO pricing)
-  - **Staff**: Create bookings (goes to pending, NO pricing)
+  - **Client**: Create bookings (goes to pending, NO pricing)
 
 #### Database Features ✅
 - ACID-compliant transactions
@@ -292,7 +292,7 @@ colab_erp/
 | **Training Facility Admin** | Calendar, Bookings, Pricing (view), Inventory | ❌ No | View-only access, **NO assignment privileges** |
 | **Kitchen Staff** | Calendar ONLY | ❌ No | View catering needs, headcounts, push orders |
 | **IT Staff** | Calendar, Device Assignment Queue | ❌ No | Device assignment operations |
-| **Staff** | Calendar, Bookings | ❌ No | Create bookings (goes to pending) |
+| **Client** | Calendar, Bookings | ❌ No | Create bookings (goes to pending) |
 
 ---
 

@@ -29,7 +29,7 @@
 │                                                                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐ │
 │  │   Browser    │  │   Browser    │  │   Browser    │  │   Future    │ │
-│  │ (Staff User) │  │ (Room Boss)  │  │ (IT Staff)   │  │ (Mobile)    │ │
+│  │ (Client User) │  │ (Room Boss)  │  │ (IT Staff)   │  │ (Mobile)    │ │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬──────┘ │
 └─────────┼──────────────────┼──────────────────┼──────────────────┼──────┘
           │                  │                  │                  │
@@ -107,7 +107,7 @@ User fills form (booking_form.py)
 ┌─────────────────────────────────────────────────────────┐
 │ Role Check                                            │
 │ • Admin: Can select room or go to pending            │
-│ • Staff: Always goes to pending                       │
+│ • Client: Always goes to pending                       │
 └─────────────────────┬─────────────────────────────────┘
                       │
         ┌─────────────┴─────────────┐

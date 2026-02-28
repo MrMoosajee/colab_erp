@@ -205,7 +205,7 @@ To provide an intuitive, efficient, and scalable resource management system that
 - ✅ Only authenticated users can access the system
 - ✅ Menu options display based on user role
 - ✅ Admin users see all menu items including pricing
-- ✅ Staff/Kitchen Staff users see limited menu (no dashboard, no notifications, no pricing)
+- ✅ Client/Kitchen Staff users see limited menu (no dashboard, no notifications, no pricing)
 - ✅ Room Boss (training_facility_admin) and IT Boss (it_rental_admin) have full admin access with their respective primary functions
 
 ### 4.2 Room Booking Management (FR-002) ✅ COMPLETED
@@ -215,7 +215,7 @@ To provide an intuitive, efficient, and scalable resource management system that
 - ✅ FR-002-01: Users must be able to create booking requests with client information
 - ✅ FR-002-02: System must validate room availability and prevent double-booking
 - ✅ FR-002-03: Admin users can directly assign rooms or send to pending
-- ✅ FR-002-04: Staff users always create pending bookings
+- ✅ FR-002-04: Client users always create pending bookings
 - ✅ FR-002-05: System must support multi-room bookings (one client, multiple date segments)
 - ✅ FR-002-06: Room capacity validation with warnings
 - ✅ FR-002-07: Conflict detection with override capability for admins
@@ -224,7 +224,7 @@ To provide an intuitive, efficient, and scalable resource management system that
 - ✅ Booking form captures all required client information
 - ✅ System prevents booking conflicts using database constraints
 - ✅ Admin can choose direct assignment or pending workflow
-- ✅ Staff bookings automatically go to pending queue
+- ✅ Client bookings automatically go to pending queue
 - ✅ Multi-segment bookings are supported
 
 ### 4.3 Ghost Inventory Workflow (FR-003) ✅ COMPLETED
