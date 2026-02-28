@@ -92,6 +92,25 @@ class BookingService:
                 )
 
                 booking_id = cur.fetchone()[0]
+                
+                # Create device assignment records if devices are needed
+                # This makes them appear in the Device Assignment Queue
+                if devices_needed > 0:
+                    # Get device category ID (default to 1 for laptops)
+                    device_category_id = 1  # Default to Laptops
+                    if device_type_preference == 'desktops':
+                        device_category_id = 2  # Desktops
+                    
+                    # Create pending device assignment for IT Staff to fulfill
+                    cur.execute(
+                        """
+                        INSERT INTO booking_device_assignments 
+                        (booking_id, device_id, device_category_id, assigned_by, is_offsite, quantity)
+                        VALUES (%s, NULL, %s, NULL, FALSE, %s)
+                        """,
+                        (booking_id, device_category_id, devices_needed)
+                    )
+                
                 conn.commit()
 
                 status_text = "confirmed" if status == 'Confirmed' else "pending approval"
