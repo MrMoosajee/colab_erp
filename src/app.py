@@ -220,11 +220,11 @@ def render_week_view(today, rooms_df):
     }
     .calendar-header {
         display: inline-block;
-        width: 140px;
+        width: 160px;
         height: 50px;
         border: 1px solid #ccc;
         padding: 8px;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: bold;
         text-align: center;
         vertical-align: middle;
@@ -235,10 +235,10 @@ def render_week_view(today, rooms_df):
     .day-cell {
         display: inline-block;
         width: 100px;
-        height: 90px;
+        height: 110px;
         border: 1px solid #ccc;
         padding: 8px;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: bold;
         text-align: center;
         vertical-align: middle;
@@ -251,7 +251,7 @@ def render_week_view(today, rooms_df):
         height: 50px;
         border: 1px solid #ccc;
         padding: 8px;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: bold;
         text-align: center;
         vertical-align: middle;
@@ -469,11 +469,11 @@ def render_month_view(today, rooms_df):
     }
     .calendar-header {
         display: inline-block;
-        width: 140px;
+        width: 160px;
         height: 50px;
         border: 1px solid #ccc;
         padding: 8px;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: bold;
         text-align: center;
         vertical-align: middle;
@@ -484,10 +484,10 @@ def render_month_view(today, rooms_df):
     .day-cell {
         display: inline-block;
         width: 100px;
-        height: 90px;
+        height: 110px;
         border: 1px solid #ccc;
         padding: 8px;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: bold;
         text-align: center;
         vertical-align: middle;
@@ -500,7 +500,7 @@ def render_month_view(today, rooms_df):
         height: 50px;
         border: 1px solid #ccc;
         padding: 8px;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: bold;
         text-align: center;
         vertical-align: middle;
