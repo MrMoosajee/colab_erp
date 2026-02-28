@@ -2013,7 +2013,7 @@ def render_admin_dashboard():
     st.caption("Ghost Inventory tracking is active.")
 
 # ----------------------------------------------------------------------------
-# MAIN CONTROLLER
+# MAIN CONTROLLER - CORRECTED ROLE DEFINITIONS
 # ----------------------------------------------------------------------------
 
 def main():
@@ -2027,22 +2027,29 @@ def main():
     st.sidebar.caption(f"User: {st.session_state['username']} ({st.session_state['role']})")
     st.sidebar.info("System Status: 🟢 Online (Headless)")
 
-    # Navigation Logic based on Role
+    # Navigation Logic based on Role - CORRECTED
     user_role = st.session_state['role']
     
-    # Pricing catalog only for admin and it_admin
-    pricing_allowed = ['admin', 'it_admin', 'training_facility_admin', 'it_rental_admin']
-    
-    if user_role in ['admin', 'training_facility_admin', 'it_admin']:
-        # Full admin menu with Notifications and Pricing
+    # Room Boss = training_facility_admin (Full access, assigns rooms)
+    if user_role == 'training_facility_admin':
         menu = ["Dashboard", "Notifications", "Calendar", "Device Assignment Queue", "New Room Booking", 
                 "New Device Booking", "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
-    elif user_role in ['it_boss', 'room_boss']:
-        # Bosses see notifications but NOT pricing
-        menu = ["Dashboard", "Notifications", "Calendar", "New Room Booking", 
-                "New Device Booking", "Pending Approvals", "Inventory Dashboard"]
+    
+    # IT Boss = it_rental_admin (Full access, device queue)
+    elif user_role == 'it_rental_admin':
+        menu = ["Dashboard", "Notifications", "Calendar", "Device Assignment Queue", "New Room Booking", 
+                "New Device Booking", "Pricing Catalog", "Pending Approvals", "Inventory Dashboard"]
+    
+    # Training Facility Admin (Viewer only - NO approval power)
+    elif user_role == 'training_facility_admin_viewer':
+        menu = ["Calendar", "Bookings", "Pricing Catalog", "Approvals", "Inventory Dashboard"]
+    
+    # Kitchen Staff (Calendar only with catering view)
+    elif user_role == 'kitchen_staff':
+        menu = ["Kitchen Calendar"]
+    
+    # Staff/Default (Limited access)
     else:
-        # Staff see limited menu, NO pricing
         menu = ["Calendar", "New Room Booking", "New Device Booking", 
                 "Pending Approvals", "Inventory Dashboard"]
 
@@ -2061,7 +2068,6 @@ def main():
     elif choice == "Device Assignment Queue":
         render_device_assignment_queue()
     elif choice == "New Room Booking":
-        # Use the enhanced Phase 3 booking form
         render_enhanced_booking_form()
     elif choice == "New Device Booking":
         render_new_device_booking()
@@ -2072,6 +2078,12 @@ def main():
         render_pending_approvals()
     elif choice == "Inventory Dashboard":
         render_inventory_dashboard()
+    elif choice == "Kitchen Calendar":
+        render_kitchen_calendar_view()
+    elif choice == "Bookings":
+        render_bookings_view()
+    elif choice == "Approvals":
+        render_approvals_view()
 
 if __name__ == "__main__":
     main()
