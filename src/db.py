@@ -6,6 +6,9 @@ from datetime import datetime, time
 import pytz
 from contextlib import contextmanager
 
+# Import numpy type converter for safe database operations
+from src.numpy_type_converter import convert_params_to_native, validate_native_types
+
 # ----------------------------------------------------------------------------
 # 1. INFRASTRUCTURE: THREAD-SAFE CONNECTION POOLING
 # ----------------------------------------------------------------------------
@@ -56,11 +59,18 @@ def run_query(query: str, params: tuple = None) -> pd.DataFrame:
     Executes a SELECT query (Read-Only).
     Raises ConnectionError for connectivity issues, other exceptions for SQL errors.
     Returns empty DataFrame only if query succeeds but returns no rows.
+    
+    CRITICAL: Automatically converts numpy types to Python native types before execution
+    to prevent psycopg2 "can't adapt type 'numpy.int64'" errors.
     """
+    # Convert numpy types to native Python types
+    # This prevents psycopg2 errors with numpy.int64, numpy.float64, etc.
+    clean_params = convert_params_to_native(params)
+    
     try:
         with get_db_connection() as conn:
             # Pandas read_sql does not close the connection; we return it to pool in 'finally'
-            return pd.read_sql(query, conn, params=params)
+            return pd.read_sql(query, conn, params=clean_params)
     except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
         # Connection/pool issues should bubble up
         raise ConnectionError(f"Database connection failed: {e}") from e
@@ -73,15 +83,23 @@ def run_transaction(query: str, params: tuple = None, fetch_one: bool = False):
     """
     Executes INSERT/UPDATE/DELETE (Write).
     Manages explicit commit/rollback to ensure pool hygiene.
+    
+    CRITICAL: Automatically converts numpy types to Python native types before execution
+    to prevent psycopg2 "can't adapt type 'numpy.int64'" errors.
 
     If fetch_one is True, returns cursor.fetchone() (useful for INSERT ... RETURNING).
     """
     conn = None
+    
+    # Convert numpy types to native Python types
+    # This prevents psycopg2 errors with numpy.int64, numpy.float64, etc.
+    clean_params = convert_params_to_native(params)
+    
     try:
         # We manually manage the context to ensure we can rollback inside the except blocks
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(query, params)
+                cur.execute(query, clean_params)
                 result = cur.fetchone() if fetch_one else None
             conn.commit()  # ACID Commit
             return result if fetch_one else True
@@ -100,11 +118,45 @@ def run_transaction(query: str, params: tuple = None, fetch_one: bool = False):
                 "Run: ALTER TABLE bookings ADD COLUMN booking_reference TEXT;"
             ) from e
         raise RuntimeError(f"Schema Error: {error_msg}") from e
+    except psycopg2.ProgrammingError as e:
+        # Handle type adaptation errors specifically
+        if "can't adapt" in str(e).lower():
+            if conn:
+                conn.rollback()
+            error_msg = str(e)
+            raise RuntimeError(
+                f"Type Error: {error_msg}. "
+                "This may indicate a numpy type was not properly converted. "
+                "Please report this error with the data types involved."
+            ) from e
+        if conn:
+            conn.rollback()
+        raise
     except Exception as e:
         if conn:
             conn.rollback()  # CRITICAL: Reset connection state
         print(f"Transaction Failed: {e}")
         raise
+
+# ----------------------------------------------------------------------------
+# 2a. UTILITY: Parameter Validation (for debugging)
+# ----------------------------------------------------------------------------
+
+def validate_params(params: tuple = None) -> tuple:
+    """
+    Validate that parameters are safe for database operations.
+    
+    This is useful for debugging type conversion issues.
+    
+    Args:
+        params: Parameters to validate
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+        is_valid is True if no issues found
+        error_message describes any issues found
+    """
+    return validate_native_types(params)
 
 # ----------------------------------------------------------------------------
 # 3. UTILITIES (Timezone & Normalization)
@@ -323,6 +375,3 @@ def create_booking(room_id, start_dt, end_dt, purpose, user_ref="SYSTEM", tenant
           RETURNING id; \
           """
     return run_transaction(sql, (room_id, start_dt, end_dt, purpose, tenant), fetch_one=True)
-
-
- 
