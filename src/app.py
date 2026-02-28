@@ -1562,8 +1562,15 @@ def render_device_assignment_queue():
         render_all_assignments()
 
 def render_pending_assignments():
-    """Show bookings with pending device requests"""
+    """Show bookings with pending device requests - with comprehensive debug logging"""
     st.subheader("📋 Pending Device Requests")
+    
+    # DEBUG: Log function entry and session state
+    print(f"[DEBUG] render_pending_assignments() called")
+    print(f"[DEBUG] Session state keys: {list(st.session_state.keys())}")
+    print(f"[DEBUG] Authenticated: {st.session_state.get('authenticated')}")
+    print(f"[DEBUG] Username: {st.session_state.get('username')}")
+    print(f"[DEBUG] Role: {st.session_state.get('role')}")
     
     try:
         # Get bookings with device requests but no assignments
@@ -1588,16 +1595,20 @@ def render_pending_assignments():
             ORDER BY lower(b.booking_period)
         """
         
+        print(f"[DEBUG] Executing pending bookings query...")
         pending_df = db.run_query(query)
+        print(f"[DEBUG] Query returned {len(pending_df)} pending requests")
         
         if pending_df.empty:
             st.info("No pending device requests.")
+            print(f"[DEBUG] No pending requests found, returning")
             return
         
         st.write(f"Found {len(pending_df)} pending requests")
         
         # Group by booking
         for booking_id in pending_df['booking_id'].unique():
+            print(f"[DEBUG] Processing booking_id={booking_id}")
             booking_requests = pending_df[pending_df['booking_id'] == booking_id]
             first = booking_requests.iloc[0]
             
@@ -1615,12 +1626,25 @@ def render_pending_assignments():
                     st.divider()
                     st.write(f"**Device Request:** {request['requested_quantity']}x {request['device_category']}")
                     
+                    # DEBUG: Log device request details
+                    print(f"[DEBUG] Processing request_id={request['request_id']}, category={request['device_category']}")
+                    print(f"[DEBUG] Dates: start={first['start_date']}, end={first['end_date']}")
+                    
                     # Get available devices
-                    available = device_manager.get_available_devices(
-                        request['device_category'],
-                        request['start_date'],
-                        request['end_date']
-                    )
+                    print(f"[DEBUG] Calling device_manager.get_available_devices()...")
+                    try:
+                        available = device_manager.get_available_devices(
+                            request['device_category'],
+                            first['start_date'],
+                            first['end_date']
+                        )
+                        print(f"[DEBUG] get_available_devices returned {len(available)} devices")
+                    except Exception as e:
+                        print(f"[ERROR] get_available_devices failed: {type(e).__name__}: {e}")
+                        import traceback
+                        print(f"[ERROR] traceback: {traceback.format_exc()}")
+                        st.error(f"⚠️ Error checking availability: {e}")
+                        continue
                     
                     if available.empty:
                         st.error(f"⚠️ No {request['device_category']}s available!")
@@ -1636,6 +1660,8 @@ def render_pending_assignments():
                             key=f"select_{request['request_id']}"
                         )
                         
+                        print(f"[DEBUG] User selected {len(selected_serials)} serials: {selected_serials}")
+                        
                         # Off-site option
                         is_offsite = st.checkbox(
                             "Off-site Rental",
@@ -1647,73 +1673,153 @@ def render_pending_assignments():
                             with st.form(key=f"offsite_form_{request['request_id']}"):
                                 st.write("**Off-site Details:**")
                                 rental_no = st.text_input("Rental No", key=f"rental_no_{request['request_id']}")
-                                rental_date = st.date_input("Rental Date", value=request['start_date'], key=f"rental_date_{request['request_id']}")
+                                rental_date = st.date_input("Rental Date", value=first['start_date'], key=f"rental_date_{request['request_id']}")
                                 contact_person = st.text_input("Contact Person", key=f"contact_{request['request_id']}")
                                 contact_number = st.text_input("Contact Number", key=f"phone_{request['request_id']}")
                                 contact_email = st.text_input("Email (optional)", key=f"email_{request['request_id']}")
                                 company = st.text_input("Company", key=f"company_{request['request_id']}")
                                 address = st.text_area("Address", key=f"address_{request['request_id']}")
-                                return_date = st.date_input("Expected Return Date", value=request['end_date'], key=f"return_{request['request_id']}")
+                                return_date = st.date_input("Expected Return Date", value=first['end_date'], key=f"return_{request['request_id']}")
                                 
                                 submitted = st.form_submit_button("Assign with Off-site Details")
                                 
                                 if submitted and selected_serials:
-                                    # Assign devices
-                                    for serial in selected_serials:
-                                        device_row = available[available['serial_number'] == serial]
-                                        if not device_row.empty:
-                                            device_id = int(device_row.iloc[0]['id'])
-                                            result = device_manager.assign_device(
-                                                booking_id,
-                                                device_id,
-                                                st.session_state['username'],
-                                                is_offsite=True,
-                                                notes=f"Off-site rental {rental_no}"
-                                            )
-                                            
-                                            if result['success']:
-                                                # Create off-site rental record
-                                                device_manager.create_offsite_rental(
-                                                    result['assignment_id'],
-                                                    rental_no,
-                                                    rental_date,
-                                                    contact_person,
-                                                    contact_number,
-                                                    contact_email or None,
-                                                    company or None,
-                                                    address,
-                                                    return_date
-                                                )
+                                    print(f"[DEBUG] Off-site form submitted for {len(selected_serials)} devices")
                                     
-                                    st.success(f"✅ Assigned {len(selected_serials)} devices with off-site details")
-                                    time.sleep(1)
-                                    st.rerun()
-                        else:
-                            # Simple assign button for on-site
-                            if st.button(f"Assign {len(selected_serials)} Devices", key=f"assign_{request['request_id']}"):
-                                if selected_serials:
+                                    # Validate session state
+                                    username = st.session_state.get('username')
+                                    if not username:
+                                        print(f"[ERROR] username not in session state!")
+                                        st.error("❌ Error: User not authenticated")
+                                        return
+                                    
+                                    print(f"[DEBUG] Assigning with username={username}")
+                                    
+                                    # Assign devices
                                     success_count = 0
                                     for serial in selected_serials:
                                         device_row = available[available['serial_number'] == serial]
                                         if not device_row.empty:
                                             device_id = int(device_row.iloc[0]['id'])
-                                            result = device_manager.assign_device(
-                                                booking_id,
-                                                device_id,
-                                                st.session_state['username'],
-                                                is_offsite=False
-                                            )
-                                            if result['success']:
-                                                success_count += 1
+                                            print(f"[DEBUG] Assigning device_id={device_id} (serial={serial}) to booking_id={booking_id}")
+                                            
+                                            try:
+                                                result = device_manager.assign_device(
+                                                    booking_id,
+                                                    device_id,
+                                                    username,
+                                                    is_offsite=True,
+                                                    notes=f"Off-site rental {rental_no}"
+                                                )
+                                                print(f"[DEBUG] assign_device result: {result}")
+                                                
+                                                if result.get('success'):
+                                                    # Create off-site rental record
+                                                    assignment_id = result.get('assignment_id')
+                                                    print(f"[DEBUG] Creating offsite rental with assignment_id={assignment_id}")
+                                                    
+                                                    try:
+                                                        offsite_result = device_manager.create_offsite_rental(
+                                                            assignment_id,
+                                                            rental_no,
+                                                            rental_date,
+                                                            contact_person,
+                                                            contact_number,
+                                                            contact_email or None,
+                                                            company or None,
+                                                            address,
+                                                            return_date
+                                                        )
+                                                        print(f"[DEBUG] create_offsite_rental result: {offsite_result}")
+                                                        
+                                                        if offsite_result.get('success'):
+                                                            success_count += 1
+                                                            print(f"[DEBUG] Offsite rental created successfully")
+                                                        else:
+                                                            print(f"[ERROR] create_offsite_rental failed: {offsite_result.get('error')}")
+                                                            st.error(f"❌ Failed to create rental record: {offsite_result.get('error')}")
+                                                    except Exception as e:
+                                                        print(f"[ERROR] create_offsite_rental exception: {type(e).__name__}: {e}")
+                                                        import traceback
+                                                        print(f"[ERROR] traceback: {traceback.format_exc()}")
+                                                        st.error(f"❌ Error creating rental record: {e}")
+                                                else:
+                                                    print(f"[ERROR] assign_device failed: {result.get('error')}")
+                                                    st.error(f"❌ Failed to assign device {serial}: {result.get('error')}")
+                                            except Exception as e:
+                                                print(f"[ERROR] assign_device exception: {type(e).__name__}: {e}")
+                                                import traceback
+                                                print(f"[ERROR] traceback: {traceback.format_exc()}")
+                                                st.error(f"❌ Error assigning device {serial}: {e}")
+                                        else:
+                                            print(f"[WARNING] Device row not found for serial={serial}")
                                     
-                                    st.success(f"✅ Assigned {success_count} devices")
-                                    time.sleep(1)
-                                    st.rerun()
+                                    if success_count > 0:
+                                        st.success(f"✅ Assigned {success_count} devices with off-site details")
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ No devices were successfully assigned")
+                        else:
+                            # Simple assign button for on-site
+                            if st.button(f"Assign {len(selected_serials)} Devices", key=f"assign_{request['request_id']}"):
+                                print(f"[DEBUG] On-site assign button clicked for {len(selected_serials)} devices")
+                                
+                                if selected_serials:
+                                    # Validate session state
+                                    username = st.session_state.get('username')
+                                    if not username:
+                                        print(f"[ERROR] username not in session state!")
+                                        st.error("❌ Error: User not authenticated")
+                                        return
+                                    
+                                    print(f"[DEBUG] Assigning with username={username}")
+                                    
+                                    success_count = 0
+                                    for serial in selected_serials:
+                                        device_row = available[available['serial_number'] == serial]
+                                        if not device_row.empty:
+                                            device_id = int(device_row.iloc[0]['id'])
+                                            print(f"[DEBUG] Assigning device_id={device_id} (serial={serial}) to booking_id={booking_id}")
+                                            
+                                            try:
+                                                result = device_manager.assign_device(
+                                                    booking_id,
+                                                    device_id,
+                                                    username,
+                                                    is_offsite=False
+                                                )
+                                                print(f"[DEBUG] assign_device result: {result}")
+                                                
+                                                if result.get('success'):
+                                                    success_count += 1
+                                                    print(f"[DEBUG] Successfully assigned device {serial}")
+                                                else:
+                                                    print(f"[ERROR] assign_device failed: {result.get('error')}")
+                                                    st.error(f"❌ Failed to assign device {serial}: {result.get('error')}")
+                                            except Exception as e:
+                                                print(f"[ERROR] assign_device exception: {type(e).__name__}: {e}")
+                                                import traceback
+                                                print(f"[ERROR] traceback: {traceback.format_exc()}")
+                                                st.error(f"❌ Error assigning device {serial}: {e}")
+                                        else:
+                                            print(f"[WARNING] Device row not found for serial={serial}")
+                                    
+                                    if success_count > 0:
+                                        st.success(f"✅ Assigned {success_count} devices")
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ No devices were successfully assigned")
                                 else:
                                     st.warning("Please select at least one device")
     
     except Exception as e:
-        st.error(f"Error loading pending assignments: {e}")
+        print(f"[ERROR] render_pending_assignments: {type(e).__name__}: {e}")
+        import traceback
+        print(f"[ERROR] traceback: {traceback.format_exc()}")
+        st.error(f"❌ Error loading pending assignments: {e}")
+
 
 def render_offsite_requests():
     """Show current off-site rentals"""
@@ -1785,8 +1891,13 @@ def render_offsite_requests():
         st.error(f"Error loading off-site rentals: {e}")
 
 def render_conflicts():
-    """Show device conflicts and reallocation options"""
+    """Show device conflicts and reallocation options - with comprehensive debug logging"""
     st.subheader("⚠️ Device Conflicts")
+    
+    # DEBUG: Log function entry
+    print(f"[DEBUG] render_conflicts() called")
+    print(f"[DEBUG] Session state keys: {list(st.session_state.keys())}")
+    print(f"[DEBUG] Username: {st.session_state.get('username')}")
     
     try:
         # Find devices with overlapping bookings
@@ -1818,7 +1929,9 @@ def render_conflicts():
             ORDER BY d.serial_number
         """
         
+        print(f"[DEBUG] Executing conflict query...")
         conflicts_df = db.run_query(conflict_query)
+        print(f"[DEBUG] Conflict query returned {len(conflicts_df)} conflicts")
         
         if conflicts_df.empty:
             st.success("✅ No device conflicts detected")
@@ -1827,6 +1940,8 @@ def render_conflicts():
         st.warning(f"Found {len(conflicts_df)} device conflict(s)")
         
         for _, conflict in conflicts_df.iterrows():
+            print(f"[DEBUG] Processing conflict for device_id={conflict['device_id']}, serial={conflict['serial_number']}")
+            
             with st.expander(
                 f"⚠️ {conflict['serial_number']} ({conflict['category_name']}) - Conflict Detected"
             ):
@@ -1847,12 +1962,18 @@ def render_conflicts():
                 st.write("**Reallocation Options:**")
                 
                 # Get alternative devices for booking 2
-                alternatives = device_manager.get_available_devices(
-                    conflict['category_name'],
-                    conflict['start2'],
-                    conflict['end2'],
-                    exclude_device_id=conflict['device_id']
-                )
+                print(f"[DEBUG] Getting alternative devices for category={conflict['category_name']}")
+                try:
+                    alternatives = device_manager.get_available_devices(
+                        conflict['category_name'],
+                        conflict['start2'],
+                        conflict['end2'],
+                        exclude_device_id=conflict['device_id']
+                    )
+                    print(f"[DEBUG] Found {len(alternatives)} alternative devices")
+                except Exception as e:
+                    print(f"[ERROR] get_available_devices failed: {type(e).__name__}: {e}")
+                    alternatives = pd.DataFrame()
                 
                 if alternatives.empty:
                     st.error("❌ No alternative devices available")
@@ -1868,38 +1989,77 @@ def render_conflicts():
                     )
                     
                     if st.button("Reallocate to Alternative", key=f"realloc_{conflict['device_id']}"):
+                        print(f"[DEBUG] Reallocate button clicked for device {conflict['device_id']}")
+                        
+                        # Validate session state
+                        username = st.session_state.get('username')
+                        if not username:
+                            print(f"[ERROR] username not in session state!")
+                            st.error("❌ Error: User not authenticated")
+                            return
+                        
+                        print(f"[DEBUG] Reallocating with username={username}")
+                        
                         alt_device = alternatives[alternatives['serial_number'] == alt_serial].iloc[0]
                         
-                        result = device_manager.reallocate_device(
-                            conflict['device_id'],
-                            conflict['booking2_id'],
-                            conflict['booking2_id'],  # Same booking, just different device
-                            st.session_state['username'],
-                            reason=f"Conflict resolution - moved to {alt_serial}"
-                        )
+                        # First, try to use reallocate_device method
+                        try:
+                            print(f"[DEBUG] Calling reallocate_device({conflict['device_id']}, {conflict['booking2_id']}, {conflict['booking2_id']}, {username})")
+                            result = device_manager.reallocate_device(
+                                conflict['device_id'],
+                                conflict['booking2_id'],
+                                conflict['booking2_id'],  # Same booking, just different device
+                                username,
+                                reason=f"Conflict resolution - moved to {alt_serial}"
+                            )
+                            print(f"[DEBUG] reallocate_device result: {result}")
+                        except Exception as e:
+                            print(f"[ERROR] reallocate_device failed: {type(e).__name__}: {e}")
+                            result = {'success': False, 'error': str(e)}
                         
                         # Actually we need to unassign old and assign new
-                        # First unassign the conflicting device
-                        db.run_query(
-                            "DELETE FROM booking_device_assignments WHERE booking_id = %s AND device_id = %s",
-                            (conflict['booking2_id'], conflict['device_id'])
-                        )
+                        try:
+                            print(f"[DEBUG] Unassigning conflicting device {conflict['device_id']} from booking {conflict['booking2_id']}")
+                            unassign_result = db.run_query(
+                                "DELETE FROM booking_device_assignments WHERE booking_id = %s AND device_id = %s",
+                                (conflict['booking2_id'], conflict['device_id'])
+                            )
+                            print(f"[DEBUG] Unassign result: {unassign_result}")
+                        except Exception as e:
+                            print(f"[ERROR] Unassign failed: {type(e).__name__}: {e}")
                         
                         # Assign the alternative
-                        device_manager.assign_device(
-                            conflict['booking2_id'],
-                            int(alt_device['id']),
-                            st.session_state['username'],
-                            is_offsite=False,
-                            notes=f"Assigned as alternative to resolve conflict with {conflict['serial_number']}"
-                        )
-                        
-                        st.success(f"✅ Reallocated to {alt_serial}")
-                        time.sleep(1)
-                        st.rerun()
+                        try:
+                            alt_device_id = int(alt_device['id'])
+                            print(f"[DEBUG] Assigning alternative device_id={alt_device_id} to booking {conflict['booking2_id']}")
+                            
+                            assign_result = device_manager.assign_device(
+                                conflict['booking2_id'],
+                                alt_device_id,
+                                username,
+                                is_offsite=False,
+                                notes=f"Assigned as alternative to resolve conflict with {conflict['serial_number']}"
+                            )
+                            print(f"[DEBUG] assign_device result: {assign_result}")
+                            
+                            if assign_result.get('success'):
+                                st.success(f"✅ Reallocated to {alt_serial}")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Failed to assign alternative: {assign_result.get('error')}")
+                        except Exception as e:
+                            print(f"[ERROR] assign_device failed: {type(e).__name__}: {e}")
+                            import traceback
+                            print(f"[ERROR] traceback: {traceback.format_exc()}")
+                            st.error(f"❌ Error reallocating: {e}")
     
     except Exception as e:
-        st.error(f"Error loading conflicts: {e}")
+        print(f"[ERROR] render_conflicts: {type(e).__name__}: {e}")
+        import traceback
+        print(f"[ERROR] traceback: {traceback.format_exc()}")
+        st.error(f"❌ Error loading conflicts: {e}")
+
 
 def render_all_assignments():
     """Show all device assignments"""

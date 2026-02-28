@@ -12,6 +12,14 @@ import pandas as pd
 from datetime import datetime, date
 from typing import List, Dict, Optional, Tuple
 import src.db as db
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 class DeviceManager:
@@ -22,7 +30,7 @@ class DeviceManager:
     
     def __init__(self):
         """Initialize DeviceManager with database connection."""
-        pass
+        logger.info("DeviceManager initialized")
     
     def get_available_devices(
         self, 
@@ -43,6 +51,21 @@ class DeviceManager:
         Returns:
             DataFrame with available devices
         """
+        logger.debug(f"get_available_devices called: category={category}, start={start_date}, end={end_date}, exclude={exclude_booking_id}")
+        
+        # Validate inputs
+        if not category:
+            logger.error("get_available_devices: category is empty or None")
+            return pd.DataFrame()
+        
+        if not start_date or not end_date:
+            logger.error(f"get_available_devices: invalid dates - start={start_date}, end={end_date}")
+            return pd.DataFrame()
+        
+        if start_date > end_date:
+            logger.error(f"get_available_devices: start_date {start_date} is after end_date {end_date}")
+            return pd.DataFrame()
+        
         query = """
             SELECT 
                 d.id,
@@ -68,10 +91,22 @@ class DeviceManager:
             ORDER BY d.serial_number
         """
         
-        start_ts = datetime.combine(start_date, datetime.min.time())
-        end_ts = datetime.combine(end_date, datetime.min.time())
-        
-        return db.run_query(query, (category, exclude_booking_id, start_ts, end_ts))
+        try:
+            start_ts = datetime.combine(start_date, datetime.min.time())
+            end_ts = datetime.combine(end_date, datetime.min.time())
+            
+            logger.debug(f"get_available_devices: executing query with params: ({category}, {exclude_booking_id}, {start_ts}, {end_ts})")
+            
+            result = db.run_query(query, (category, exclude_booking_id, start_ts, end_ts))
+            
+            logger.info(f"get_available_devices: found {len(result)} available devices for category={category}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"get_available_devices: ERROR - {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"get_available_devices: traceback - {traceback.format_exc()}")
+            return pd.DataFrame()
     
     def get_devices_by_booking(self, booking_id: int) -> pd.DataFrame:
         """
@@ -83,6 +118,12 @@ class DeviceManager:
         Returns:
             DataFrame with assigned devices
         """
+        logger.debug(f"get_devices_by_booking called: booking_id={booking_id}")
+        
+        if not booking_id or not isinstance(booking_id, int):
+            logger.error(f"get_devices_by_booking: invalid booking_id={booking_id}")
+            return pd.DataFrame()
+        
         query = """
             SELECT 
                 bda.id as assignment_id,
@@ -101,7 +142,13 @@ class DeviceManager:
             ORDER BY dc.name, d.serial_number
         """
         
-        return db.run_query(query, (booking_id,))
+        try:
+            result = db.run_query(query, (booking_id,))
+            logger.info(f"get_devices_by_booking: found {len(result)} devices for booking {booking_id}")
+            return result
+        except Exception as e:
+            logger.error(f"get_devices_by_booking: ERROR - {type(e).__name__}: {e}")
+            return pd.DataFrame()
     
     def assign_device(
         self, 
@@ -124,27 +171,50 @@ class DeviceManager:
         Returns:
             Dict with success status and message
         """
+        logger.info(f"assign_device called: booking_id={booking_id}, device_id={device_id}, assigned_by={assigned_by}, is_offsite={is_offsite}")
+        
+        # Validate inputs
+        if not booking_id:
+            logger.error(f"assign_device: ERROR - booking_id is None or empty")
+            return {'success': False, 'error': 'booking_id is required'}
+        
+        if not device_id:
+            logger.error(f"assign_device: ERROR - device_id is None or empty")
+            return {'success': False, 'error': 'device_id is required'}
+        
+        if not assigned_by:
+            logger.error(f"assign_device: ERROR - assigned_by is None or empty")
+            return {'success': False, 'error': 'assigned_by is required'}
+        
         try:
+            logger.debug(f"assign_device: Step 1 - Getting category_id for device {device_id}")
+            
             # Get category_id for the device
             category_query = "SELECT category_id FROM devices WHERE id = %s"
             category_result = db.run_query(category_query, (device_id,))
             
             if category_result.empty:
-                return {'success': False, 'error': 'Device not found'}
+                logger.error(f"assign_device: ERROR - Device {device_id} not found in database")
+                return {'success': False, 'error': f'Device {device_id} not found'}
             
             category_id = int(category_result.iloc[0]['category_id'])
+            logger.debug(f"assign_device: Step 1 complete - category_id={category_id}")
             
             # Delete any pending placeholder records for this booking/category
-            # This handles the initial request record
+            logger.debug(f"assign_device: Step 2 - Deleting placeholder records for booking {booking_id}, category {category_id}")
+            
             delete_query = """
                 DELETE FROM booking_device_assignments 
                 WHERE booking_id = %s 
                 AND device_category_id = %s
                 AND device_id IS NULL
             """
-            db.run_transaction(delete_query, (booking_id, category_id))
+            delete_result = db.run_transaction(delete_query, (booking_id, category_id))
+            logger.debug(f"assign_device: Step 2 complete - delete result: {delete_result}")
             
             # Insert actual device assignment
+            logger.debug(f"assign_device: Step 3 - Inserting device assignment")
+            
             insert_query = """
                 INSERT INTO booking_device_assignments 
                 (booking_id, device_id, device_category_id, assigned_by, 
@@ -155,23 +225,33 @@ class DeviceManager:
                 RETURNING id
             """
             
+            logger.debug(f"assign_device: Step 3 - executing insert with params: ({booking_id}, {device_id}, {category_id}, {assigned_by}, {is_offsite}, {notes})")
+            
             result = db.run_transaction(
                 insert_query, 
                 (booking_id, device_id, category_id, assigned_by, is_offsite, notes),
                 fetch_one=True
             )
             
+            logger.debug(f"assign_device: Step 3 complete - insert result: {result}")
+            
             if result:
+                assignment_id = result[0]
+                logger.info(f"assign_device: SUCCESS - Device {device_id} assigned to booking {booking_id}, assignment_id={assignment_id}")
                 return {
                     'success': True, 
-                    'assignment_id': result[0],
+                    'assignment_id': assignment_id,
                     'message': f'Device {device_id} assigned to booking {booking_id}'
                 }
             else:
-                return {'success': False, 'error': 'Failed to create assignment'}
+                logger.error(f"assign_device: ERROR - db.run_transaction returned None for insert")
+                return {'success': False, 'error': 'Failed to create assignment - database returned no result'}
                 
         except Exception as e:
-            return {'success': False, 'error': str(e)}
+            logger.error(f"assign_device: ERROR - Exception during assignment: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"assign_device: traceback - {traceback.format_exc()}")
+            return {'success': False, 'error': f'{type(e).__name__}: {str(e)}'}
     
     def unassign_device(self, assignment_id: int) -> Dict:
         """
@@ -183,20 +263,35 @@ class DeviceManager:
         Returns:
             Dict with success status
         """
+        logger.info(f"unassign_device called: assignment_id={assignment_id}")
+        
+        if not assignment_id:
+            logger.error("unassign_device: ERROR - assignment_id is None or empty")
+            return {'success': False, 'error': 'assignment_id is required'}
+        
         try:
             delete_query = """
                 DELETE FROM booking_device_assignments 
                 WHERE id = %s
             """
             
-            db.run_transaction(delete_query, (assignment_id,))
+            result = db.run_transaction(delete_query, (assignment_id,))
+            logger.debug(f"unassign_device: delete result: {result}")
             
-            return {
-                'success': True,
-                'message': f'Assignment {assignment_id} removed'
-            }
+            if result:
+                logger.info(f"unassign_device: SUCCESS - Assignment {assignment_id} removed")
+                return {
+                    'success': True,
+                    'message': f'Assignment {assignment_id} removed'
+                }
+            else:
+                logger.error(f"unassign_device: ERROR - db.run_transaction returned None/False")
+                return {'success': False, 'error': 'Failed to remove assignment'}
             
         except Exception as e:
+            logger.error(f"unassign_device: ERROR - {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"unassign_device: traceback - {traceback.format_exc()}")
             return {'success': False, 'error': str(e)}
     
     def get_device_conflicts(
@@ -218,6 +313,12 @@ class DeviceManager:
         Returns:
             DataFrame with conflicting bookings
         """
+        logger.debug(f"get_device_conflicts called: device_id={device_id}, start={start_date}, end={end_date}, exclude={exclude_booking_id}")
+        
+        if not device_id:
+            logger.error("get_device_conflicts: ERROR - device_id is None or empty")
+            return pd.DataFrame()
+        
         query = """
             SELECT 
                 b.id as booking_id,
@@ -236,10 +337,16 @@ class DeviceManager:
             ORDER BY lower(b.booking_period)
         """
         
-        start_ts = datetime.combine(start_date, datetime.min.time())
-        end_ts = datetime.combine(end_date, datetime.min.time())
-        
-        return db.run_query(query, (device_id, exclude_booking_id, start_ts, end_ts))
+        try:
+            start_ts = datetime.combine(start_date, datetime.min.time())
+            end_ts = datetime.combine(end_date, datetime.min.time())
+            
+            result = db.run_query(query, (device_id, exclude_booking_id, start_ts, end_ts))
+            logger.info(f"get_device_conflicts: found {len(result)} conflicts for device {device_id}")
+            return result
+        except Exception as e:
+            logger.error(f"get_device_conflicts: ERROR - {type(e).__name__}: {e}")
+            return pd.DataFrame()
     
     def can_reallocate_device(
         self,
@@ -259,6 +366,8 @@ class DeviceManager:
         Returns:
             Dict with can_reallocate status and reason
         """
+        logger.debug(f"can_reallocate_device called: device_id={device_id}, from={from_booking_id}, to={to_booking_id}")
+        
         # Get booking dates
         booking_query = """
             SELECT 
@@ -270,39 +379,51 @@ class DeviceManager:
             WHERE id IN (%s, %s)
         """
         
-        bookings = db.run_query(booking_query, (from_booking_id, to_booking_id))
-        
-        if len(bookings) != 2:
+        try:
+            bookings = db.run_query(booking_query, (from_booking_id, to_booking_id))
+            
+            if len(bookings) != 2:
+                logger.warning(f"can_reallocate_device: only found {len(bookings)} bookings, expected 2")
+                return {
+                    'can_reallocate': False,
+                    'reason': 'One or both bookings not found'
+                }
+            
+            from_booking = bookings[bookings['id'] == from_booking_id].iloc[0]
+            
+            # Check if original booking has started
+            today = date.today()
+            booking_started = from_booking['start_date'] <= today
+            booking_completed = from_booking['end_date'] < today
+            
+            if booking_completed:
+                result = {
+                    'can_reallocate': True,
+                    'reason': 'Original booking completed',
+                    'requires_boss_approval': False
+                }
+            elif booking_started:
+                result = {
+                    'can_reallocate': True,
+                    'reason': 'Booking in progress - recommend checking with client',
+                    'requires_boss_approval': False,
+                    'warning': 'Class already started - client coordination recommended'
+                }
+            else:
+                result = {
+                    'can_reallocate': True,
+                    'reason': 'Booking has not started yet',
+                    'requires_boss_approval': False
+                }
+            
+            logger.info(f"can_reallocate_device: result={result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"can_reallocate_device: ERROR - {type(e).__name__}: {e}")
             return {
                 'can_reallocate': False,
-                'reason': 'One or both bookings not found'
-            }
-        
-        from_booking = bookings[bookings['id'] == from_booking_id].iloc[0]
-        
-        # Check if original booking has started
-        today = date.today()
-        booking_started = from_booking['start_date'] <= today
-        booking_completed = from_booking['end_date'] < today
-        
-        if booking_completed:
-            return {
-                'can_reallocate': True,
-                'reason': 'Original booking completed',
-                'requires_boss_approval': False
-            }
-        elif booking_started:
-            return {
-                'can_reallocate': True,
-                'reason': 'Booking in progress - recommend checking with client',
-                'requires_boss_approval': False,
-                'warning': 'Class already started - client coordination recommended'
-            }
-        else:
-            return {
-                'can_reallocate': True,
-                'reason': 'Booking has not started yet',
-                'requires_boss_approval': False
+                'reason': f'Error checking reallocation: {str(e)}'
             }
     
     def reallocate_device(
@@ -326,18 +447,43 @@ class DeviceManager:
         Returns:
             Dict with success status
         """
+        logger.info(f"reallocate_device called: device_id={device_id}, from={from_booking_id}, to={to_booking_id}, by={performed_by}")
+        
+        if not device_id:
+            return {'success': False, 'error': 'device_id is required'}
+        if not from_booking_id:
+            return {'success': False, 'error': 'from_booking_id is required'}
+        if not to_booking_id:
+            return {'success': False, 'error': 'to_booking_id is required'}
+        if not performed_by:
+            return {'success': False, 'error': 'performed_by is required'}
+        
         try:
             # Remove from original booking
+            logger.debug(f"reallocate_device: Step 1 - Removing device {device_id} from booking {from_booking_id}")
+            
             unassign_query = """
                 DELETE FROM booking_device_assignments 
                 WHERE device_id = %s AND booking_id = %s
             """
-            db.run_transaction(unassign_query, (device_id, from_booking_id))
+            unassign_result = db.run_transaction(unassign_query, (device_id, from_booking_id))
+            logger.debug(f"reallocate_device: Step 1 complete - unassign result: {unassign_result}")
             
             # Add to new booking
+            logger.debug(f"reallocate_device: Step 2 - Getting category_id for device {device_id}")
+            
             category_query = "SELECT category_id FROM devices WHERE id = %s"
             category_result = db.run_query(category_query, (device_id,))
+            
+            if category_result.empty:
+                logger.error(f"reallocate_device: ERROR - Device {device_id} not found")
+                return {'success': False, 'error': f'Device {device_id} not found'}
+            
             category_id = int(category_result.iloc[0]['category_id'])
+            logger.debug(f"reallocate_device: Step 2 complete - category_id={category_id}")
+            
+            # Insert into new booking
+            logger.debug(f"reallocate_device: Step 3 - Inserting into booking {to_booking_id}")
             
             insert_query = """
                 INSERT INTO booking_device_assignments 
@@ -352,17 +498,27 @@ class DeviceManager:
             if reason:
                 reallocation_note += f". Reason: {reason}"
             
-            db.run_transaction(
+            insert_result = db.run_transaction(
                 insert_query,
                 (to_booking_id, device_id, category_id, performed_by, reallocation_note)
             )
             
-            return {
-                'success': True,
-                'message': f'Device moved from booking {from_booking_id} to {to_booking_id}'
-            }
+            logger.debug(f"reallocate_device: Step 3 complete - insert result: {insert_result}")
+            
+            if insert_result:
+                logger.info(f"reallocate_device: SUCCESS - Device moved from {from_booking_id} to {to_booking_id}")
+                return {
+                    'success': True,
+                    'message': f'Device moved from booking {from_booking_id} to {to_booking_id}'
+                }
+            else:
+                logger.error(f"reallocate_device: ERROR - Insert returned None/False")
+                return {'success': False, 'error': 'Failed to create new assignment'}
             
         except Exception as e:
+            logger.error(f"reallocate_device: ERROR - {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"reallocate_device: traceback - {traceback.format_exc()}")
             return {'success': False, 'error': str(e)}
     
     def get_alternative_devices(
@@ -384,6 +540,8 @@ class DeviceManager:
         Returns:
             DataFrame with alternative devices
         """
+        logger.debug(f"get_alternative_devices called: category={category}, exclude={exclude_device_id}")
+        
         return self.get_available_devices(
             category, start_date, end_date, exclude_booking_id=None
         ).query(f'id != {exclude_device_id}')
@@ -405,6 +563,8 @@ class DeviceManager:
         Returns:
             Dict with stock status and warning if low
         """
+        logger.debug(f"check_stock_levels called: category={category}, date={future_date}, threshold={min_threshold}")
+        
         # Count total devices in category
         total_query = """
             SELECT COUNT(*) as total
@@ -413,31 +573,46 @@ class DeviceManager:
             WHERE dc.name = %s
             AND d.status != 'retired'
         """
-        total_result = db.run_query(total_query, (category,))
-        total_devices = int(total_result.iloc[0]['total'])
         
-        # Count available devices for date
-        available = self.get_available_devices(
-            category, future_date, future_date
-        )
-        available_count = len(available)
-        
-        status = {
-            'category': category,
-            'total_devices': total_devices,
-            'available': available_count,
-            'date': future_date,
-            'is_low': available_count < min_threshold,
-            'threshold': min_threshold
-        }
-        
-        if available_count < min_threshold:
-            status['warning'] = (
-                f"LOW STOCK: Only {available_count} {category}s available "
-                f"for {future_date}. Threshold: {min_threshold}"
+        try:
+            total_result = db.run_query(total_query, (category,))
+            total_devices = int(total_result.iloc[0]['total'])
+            
+            # Count available devices for date
+            available = self.get_available_devices(
+                category, future_date, future_date
             )
-        
-        return status
+            available_count = len(available)
+            
+            status = {
+                'category': category,
+                'total_devices': total_devices,
+                'available': available_count,
+                'date': future_date,
+                'is_low': available_count < min_threshold,
+                'threshold': min_threshold
+            }
+            
+            if available_count < min_threshold:
+                status['warning'] = (
+                    f"LOW STOCK: Only {available_count} {category}s available "
+                    f"for {future_date}. Threshold: {min_threshold}"
+                )
+            
+            logger.info(f"check_stock_levels: category={category}, total={total_devices}, available={available_count}, is_low={status['is_low']}")
+            return status
+            
+        except Exception as e:
+            logger.error(f"check_stock_levels: ERROR - {type(e).__name__}: {e}")
+            return {
+                'category': category,
+                'total_devices': 0,
+                'available': 0,
+                'date': future_date,
+                'is_low': True,
+                'threshold': min_threshold,
+                'warning': f'Error checking stock: {str(e)}'
+            }
     
     def create_offsite_rental(
         self,
@@ -468,6 +643,22 @@ class DeviceManager:
         Returns:
             Dict with success status
         """
+        logger.info(f"create_offsite_rental called: assignment_id={assignment_id}, rental_no={rental_no}")
+        
+        # Validate required inputs
+        if not assignment_id:
+            return {'success': False, 'error': 'assignment_id is required'}
+        if not rental_no:
+            return {'success': False, 'error': 'rental_no is required'}
+        if not contact_person:
+            return {'success': False, 'error': 'contact_person is required'}
+        if not contact_number:
+            return {'success': False, 'error': 'contact_number is required'}
+        if not address:
+            return {'success': False, 'error': 'address is required'}
+        if not return_expected_date:
+            return {'success': False, 'error': 'return_expected_date is required'}
+        
         try:
             query = """
                 INSERT INTO offsite_rentals 
@@ -478,6 +669,8 @@ class DeviceManager:
                 RETURNING id
             """
             
+            logger.debug(f"create_offsite_rental: executing insert with assignment_id={assignment_id}")
+            
             result = db.run_transaction(
                 query,
                 (assignment_id, rental_no, rental_date, contact_person,
@@ -486,15 +679,21 @@ class DeviceManager:
             )
             
             if result:
+                rental_id = result[0]
+                logger.info(f"create_offsite_rental: SUCCESS - offsite_rental_id={rental_id}")
                 return {
                     'success': True,
-                    'offsite_rental_id': result[0],
+                    'offsite_rental_id': rental_id,
                     'message': f'Off-site rental {rental_no} created'
                 }
             else:
-                return {'success': False, 'error': 'Failed to create off-site rental'}
+                logger.error(f"create_offsite_rental: ERROR - db.run_transaction returned None")
+                return {'success': False, 'error': 'Failed to create off-site rental - no result from database'}
                 
         except Exception as e:
+            logger.error(f"create_offsite_rental: ERROR - {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"create_offsite_rental: traceback - {traceback.format_exc()}")
             return {'success': False, 'error': str(e)}
 
     # =========================================================================
@@ -508,6 +707,8 @@ class DeviceManager:
         Returns:
             Dict with total, available, assigned, offsite counts
         """
+        logger.debug("get_inventory_summary called")
+        
         try:
             query = """
                 SELECT 
@@ -522,6 +723,7 @@ class DeviceManager:
             result = db.run_query(query)
             
             if result.empty:
+                logger.warning("get_inventory_summary: query returned empty result")
                 return {
                     'total_devices': 0,
                     'available': 0,
@@ -533,7 +735,7 @@ class DeviceManager:
             total = int(result.iloc[0]['total_devices'])
             available = int(result.iloc[0]['available'])
             
-            return {
+            summary = {
                 'total_devices': total,
                 'available': available,
                 'assigned': int(result.iloc[0]['assigned']),
@@ -541,8 +743,13 @@ class DeviceManager:
                 'available_percent': (available / total * 100) if total > 0 else 0
             }
             
+            logger.info(f"get_inventory_summary: total={total}, available={available}, assigned={summary['assigned']}, offsite={summary['offsite']}")
+            return summary
+            
         except Exception as e:
-            print(f"Error getting inventory summary: {e}")
+            logger.error(f"get_inventory_summary: ERROR - {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"get_inventory_summary: traceback - {traceback.format_exc()}")
             return {
                 'total_devices': 0,
                 'available': 0,
@@ -558,8 +765,17 @@ class DeviceManager:
         Returns:
             DataFrame with category id and name
         """
+        logger.debug("get_device_categories called")
+        
         query = "SELECT id, name FROM device_categories ORDER BY name"
-        return db.run_query(query)
+        
+        try:
+            result = db.run_query(query)
+            logger.info(f"get_device_categories: found {len(result)} categories")
+            return result
+        except Exception as e:
+            logger.error(f"get_device_categories: ERROR - {type(e).__name__}: {e}")
+            return pd.DataFrame()
 
     def get_category_stats(self, category_id: int) -> Dict:
         """
@@ -571,6 +787,12 @@ class DeviceManager:
         Returns:
             Dict with total, available, and low_stock flag
         """
+        logger.debug(f"get_category_stats called: category_id={category_id}")
+        
+        if not category_id:
+            logger.error("get_category_stats: ERROR - category_id is None or empty")
+            return {'total': 0, 'available': 0, 'low_stock': True}
+        
         try:
             query = """
                 SELECT 
@@ -584,19 +806,25 @@ class DeviceManager:
             result = db.run_query(query, (category_id,))
             
             if result.empty:
+                logger.warning(f"get_category_stats: query returned empty for category_id={category_id}")
                 return {'total': 0, 'available': 0, 'low_stock': True}
             
             total = int(result.iloc[0]['total'])
             available = int(result.iloc[0]['available'])
             
-            return {
+            stats = {
                 'total': total,
                 'available': available,
                 'low_stock': available < 3  # Threshold of 3 devices
             }
             
+            logger.info(f"get_category_stats: category_id={category_id}, total={total}, available={available}, low_stock={stats['low_stock']}")
+            return stats
+            
         except Exception as e:
-            print(f"Error getting category stats: {e}")
+            logger.error(f"get_category_stats: ERROR - {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"get_category_stats: traceback - {traceback.format_exc()}")
             return {'total': 0, 'available': 0, 'low_stock': True}
 
     def get_devices_detailed(
@@ -616,6 +844,8 @@ class DeviceManager:
         Returns:
             DataFrame with device details
         """
+        logger.debug(f"get_devices_detailed called: status={status}, category={category}, serial_search={serial_search}")
+        
         query = """
             SELECT 
                 d.serial_number,
@@ -661,7 +891,13 @@ class DeviceManager:
         
         query += " ORDER BY dc.name, d.serial_number"
         
-        return db.run_query(query, tuple(params) if params else None)
+        try:
+            result = db.run_query(query, tuple(params) if params else None)
+            logger.info(f"get_devices_detailed: found {len(result)} devices")
+            return result
+        except Exception as e:
+            logger.error(f"get_devices_detailed: ERROR - {type(e).__name__}: {e}")
+            return pd.DataFrame()
 
     def get_recent_activity(self, limit: int = 20) -> pd.DataFrame:
         """
@@ -673,6 +909,8 @@ class DeviceManager:
         Returns:
             DataFrame with recent activity
         """
+        logger.debug(f"get_recent_activity called: limit={limit}")
+        
         query = """
             SELECT 
                 bda.assigned_at as timestamp,
@@ -691,7 +929,13 @@ class DeviceManager:
             LIMIT %s
         """
         
-        return db.run_query(query, (limit,))
+        try:
+            result = db.run_query(query, (limit,))
+            logger.info(f"get_recent_activity: found {len(result)} activity records")
+            return result
+        except Exception as e:
+            logger.error(f"get_recent_activity: ERROR - {type(e).__name__}: {e}")
+            return pd.DataFrame()
 
     def export_inventory_csv(self) -> str:
         """
@@ -700,6 +944,8 @@ class DeviceManager:
         Returns:
             CSV string of inventory data
         """
+        logger.debug("export_inventory_csv called")
+        
         query = """
             SELECT 
                 d.serial_number,
@@ -716,5 +962,11 @@ class DeviceManager:
             ORDER BY dc.name, d.serial_number
         """
         
-        df = db.run_query(query)
-        return df.to_csv(index=False)
+        try:
+            df = db.run_query(query)
+            csv_data = df.to_csv(index=False)
+            logger.info(f"export_inventory_csv: exported {len(df)} devices")
+            return csv_data
+        except Exception as e:
+            logger.error(f"export_inventory_csv: ERROR - {type(e).__name__}: {e}")
+            raise
