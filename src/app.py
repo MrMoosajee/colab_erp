@@ -1582,7 +1582,7 @@ def render_pending_assignments():
             JOIN rooms r ON b.room_id = r.id
             JOIN booking_device_assignments bda ON b.id = bda.booking_id
             JOIN device_categories dc ON bda.device_category_id = dc.id
-            WHERE b.status = 'confirmed'
+            WHERE b.status IN ('Pending', 'Confirmed')
             AND bda.device_id IS NULL
             AND lower(b.booking_period) >= CURRENT_DATE
             ORDER BY lower(b.booking_period)

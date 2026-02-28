@@ -134,7 +134,17 @@ class DeviceManager:
             
             category_id = int(category_result.iloc[0]['category_id'])
             
-            # Insert assignment
+            # Delete any pending placeholder records for this booking/category
+            # This handles the initial request record
+            delete_query = """
+                DELETE FROM booking_device_assignments 
+                WHERE booking_id = %s 
+                AND device_category_id = %s
+                AND device_id IS NULL
+            """
+            db.run_transaction(delete_query, (booking_id, category_id))
+            
+            # Insert actual device assignment
             insert_query = """
                 INSERT INTO booking_device_assignments 
                 (booking_id, device_id, device_category_id, assigned_by, 
