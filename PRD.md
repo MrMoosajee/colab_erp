@@ -100,33 +100,94 @@ To provide an intuitive, efficient, and scalable resource management system that
 
 ---
 
-## 3. User Personas
+## 3. User Personas & Roles (CORRECTED)
 
-### 3.1 Admin (training_facility_admin)
-**Role:** System administrator with full access
-**Responsibilities:** Dashboard access, user management, system configuration, pricing management
-**Key Tasks:** View all bookings, manage users, configure system settings, set pricing
+### 3.1 Room Boss = Admin (training_facility_admin)
+**Role ID:** training_facility_admin  
+**Type:** Admin Role (Boss)  
+**Responsibilities:** 
+- Assign rooms to pending bookings (primary function)
+- Full system administration
+- User management, system configuration
+- Pricing management
+
+**Access:** Dashboard, Notifications, Calendar, Bookings, Pricing, Pending Approvals, Inventory
+
+**Key Tasks:** 
+- Assign rooms to pending bookings (Ghost Inventory workflow)
+- View all bookings, manage users
+- Configure system settings, set pricing
+
 **Access Level:** Full system access including pricing catalog
 
-### 3.2 Room Boss
-**Role:** Room assignment manager
-**Responsibilities:** Assign rooms to pending bookings, manage room conflicts
-**Key Tasks:** Review pending bookings, assign rooms, override conflicts
-**Access Level:** Pending approvals, calendar, notifications, NO pricing access
+---
 
-### 3.3 IT Boss / IT Staff
-**Role:** Device assignment and management
-**Responsibilities:** Assign devices to bookings, manage off-site rentals
-**Key Tasks:** Device assignment queue, conflict resolution, off-site tracking
-**Access Level:** Device assignment, calendar, notifications, NO pricing access
+### 3.2 IT Boss = IT Rental Admin (it_rental_admin)
+**Role ID:** it_rental_admin  
+**Type:** Admin Role (Boss)  
+**Responsibilities:** 
+- Device assignment queue (primary function)
+- Manage off-site rentals
+- Device inventory management
 
-### 3.4 Staff
-**Role:** Booking request creator
-**Responsibilities:** Create booking requests, view calendar
-**Key Tasks:** Submit booking requests (always pending), track status
-**Access Level:** Calendar, booking creation, NO pricing access
+**Access:** Dashboard, Notifications, Calendar, Bookings, Pricing, Pending Approvals, Inventory
+
+**Key Tasks:** 
+- Assign devices to bookings from queue
+- Track off-site rentals with full contact details
+- Resolve device conflicts and suggest alternatives
+- Monitor stock levels with low stock alerts
+
+**Access Level:** Full system access including pricing catalog
 
 ---
+
+### 3.3 Training Facility Admin (Non-Admin Role)
+**Role ID:** training_facility_admin_viewer  
+**Type:** Non-Admin Role (Staff-level)  
+**Responsibilities:** 
+- View full calendar
+- View bookings and inventory
+- View pricing (read-only)
+- **CANNOT** approve/assign like bosses
+
+**Access:** Calendar, Bookings, Pricing (view-only), Approvals (view-only), Inventory
+
+**Key Tasks:** 
+- View calendar and bookings for planning
+- Monitor inventory levels
+- View pricing information
+- **NO boss/admin privileges** - cannot assign rooms or approve bookings
+- **NO device assignment privileges**
+
+**Access Level:** Read-only access to most areas, NO approval/assignment privileges
+
+---
+
+### 3.4 Kitchen Staff (NEW ROLE)
+**Role ID:** kitchen_staff  
+**Type:** Limited Access Role  
+**Responsibilities:** 
+- Monitor catering needs
+- Track headcounts for meal planning
+- Push orders for low stock items
+- ERP assists with calculations
+
+**Access:** Calendar view ONLY
+
+**Key Tasks:** 
+- View calendar for catering planning
+- See catering needs and headcounts (learners + facilitators)
+- Monitor kitchen-related stock levels
+- Push orders when stock is low
+
+**Access Level:** Minimal access - Calendar only with catering-related information
+
+**What They See:**
+- Calendar with booking dates
+- Headcounts (learners + facilitators) for meal planning
+- Catering requirements (coffee/tea, morning, lunch)
+- Low stock alerts for kitchen supplies
 
 ## 4. Functional Requirements
 
@@ -135,7 +196,7 @@ To provide an intuitive, efficient, and scalable resource management system that
 **Description:** Secure user authentication with role-based access control
 **Requirements:**
 - ✅ FR-001-01: Users must authenticate with username and bcrypt-hashed password
-- ✅ FR-001-02: System must support 6 user roles: admin, training_facility_admin, it_rental_admin, it_boss, room_boss, staff
+- ✅ FR-001-02: System must support 5 user roles: admin, training_facility_admin (Room Boss), it_rental_admin (IT Boss), training_facility_admin_viewer (Non-Admin), kitchen_staff (NEW)
 - ✅ FR-001-03: Role-based menu access must be enforced
 - ✅ FR-001-04: Session management with logout functionality
 - ✅ FR-001-05: Password security with bcrypt hashing
@@ -144,7 +205,8 @@ To provide an intuitive, efficient, and scalable resource management system that
 - ✅ Only authenticated users can access the system
 - ✅ Menu options display based on user role
 - ✅ Admin users see all menu items including pricing
-- ✅ Staff users see limited menu (no dashboard, no notifications, no pricing)
+- ✅ Staff/Kitchen Staff users see limited menu (no dashboard, no notifications, no pricing)
+- ✅ Room Boss (training_facility_admin) and IT Boss (it_rental_admin) have full admin access with their respective primary functions
 
 ### 4.2 Room Booking Management (FR-002) ✅ COMPLETED
 **Priority:** P1 - Critical

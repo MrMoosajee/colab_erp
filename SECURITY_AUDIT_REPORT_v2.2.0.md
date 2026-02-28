@@ -175,10 +175,11 @@ bcrypt.checkpw(password.encode(), str(pw_hash).encode())
 
 ### ✅ GOOD-004: Role-Based Access Control
 Multi-level RBAC implemented:
-- admin / training_facility_admin
-- it_admin / it_rental_admin / it_boss
-- room_boss
-- staff
+- admin (full system access)
+- training_facility_admin (Room Boss = Admin, room assignment, pricing access)
+- it_rental_admin (IT Boss = IT Rental Admin, device queue, pricing access)
+- training_facility_admin_viewer (Non-Admin, view-only access)
+- kitchen_staff (NEW ROLE, calendar only)
 
 ### ✅ GOOD-005: Audit Logging
 Agent operations are logged for compliance:

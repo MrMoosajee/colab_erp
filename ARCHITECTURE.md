@@ -498,13 +498,13 @@ CREATE TABLE users (
 );
 ```
 
-**Roles:** 
-- `admin`: Full system access
-- `training_facility_admin`: Dashboard, notifications, pricing
-- `it_rental_admin`: Same as training_facility_admin
-- `it_boss`: Notifications, device queue
-- `room_boss`: Notifications, pending approvals
-- `staff`: Calendar, bookings (pending only)
+**Roles (CORRECTED):**
+- `admin`: Full system access with pricing
+- `training_facility_admin` (Room Boss = Admin): Full system access + Room assignment, has pricing access
+- `it_rental_admin` (IT Boss = IT Rental Admin): Full system access + Device assignment, has pricing access
+- `training_facility_admin_viewer` (Non-Admin): Calendar, Bookings, Pricing (view-only), Inventory - NO assignment privileges
+- `kitchen_staff` (NEW): Calendar view ONLY - sees catering needs and headcounts
+- `staff` (Legacy): Calendar, bookings (pending only) - being deprecated
 
 ### Supporting Tables
 
@@ -630,11 +630,10 @@ class PricingService:
 | Role | Permissions | Pricing Access |
 |------|-------------|----------------|
 | **admin** | Full system access | ✅ Yes |
-| **training_facility_admin** | Dashboard, notifications, calendar, bookings, approvals | ✅ Yes |
-| **it_rental_admin** | Same as training_facility_admin | ✅ Yes |
-| **room_boss** | Notifications, pending approvals, calendar, bookings | ❌ No |
-| **it_boss** | Notifications, device queue, calendar, bookings | ❌ No |
-| **it_staff** | Device assignment queue, device operations | ❌ No |
+| **training_facility_admin (Room Boss)** | Full system access + Room Assignment | ✅ Yes |
+| **it_rental_admin (IT Boss)** | Full system access + Device Assignment | ✅ Yes |
+| **training_facility_admin_viewer** | Calendar, Bookings, Pricing (view-only), Inventory | ❌ No |
+| **kitchen_staff** | Calendar view ONLY | ❌ No |
 | **staff** | Calendar, bookings (pending only) | ❌ No |
 
 ### Data Security

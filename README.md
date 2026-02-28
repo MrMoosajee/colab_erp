@@ -287,12 +287,12 @@ colab_erp/
 | Role | Menu Access | Pricing Access | Special Features |
 |------|-------------|----------------|------------------|
 | **Admin** | Dashboard, Notifications, Calendar, Device Queue, Bookings, Approvals, Inventory, **Pricing** | ✅ Yes | Full system access |
-| **Training Facility Admin** | Dashboard, Notifications, Calendar, Bookings, Approvals, Inventory, **Pricing** | ✅ Yes | Same as admin |
-| **IT Rental Admin** | Dashboard, Notifications, Calendar, Bookings, Approvals, Inventory, **Pricing** | ✅ Yes | Same as admin |
-| **Room Boss** | Dashboard, Notifications, Calendar, Bookings, Pricing, Pending Approvals, Inventory | ❌ No | Assign rooms to pending bookings |
-| **IT Boss** | Dashboard, Notifications, Calendar, Bookings, Pricing, Pending Approvals, Inventory | ❌ No | Device assignment queue |
-| **IT Staff** | Calendar, Device Assignment Queue | ❌ No | Device assignment, off-site tracking |
-| **Staff** | Calendar, Bookings, Pricing, Approvals, Inventory | ❌ No | Create bookings (goes to pending) |
+| **Room Boss (training_facility_admin)** | Dashboard, Notifications, Calendar, Bookings, Pricing, Pending Approvals, Inventory | ✅ Yes | **Primary: Assign rooms to pending bookings** |
+| **IT Boss (it_rental_admin)** | Dashboard, Notifications, Calendar, Bookings, Pricing, Pending Approvals, Inventory | ✅ Yes | **Primary: Device assignment queue** |
+| **Training Facility Admin** | Calendar, Bookings, Pricing (view), Inventory | ❌ No | View-only access, **NO assignment privileges** |
+| **Kitchen Staff** | Calendar ONLY | ❌ No | View catering needs, headcounts, push orders |
+| **IT Staff** | Calendar, Device Assignment Queue | ❌ No | Device assignment operations |
+| **Staff** | Calendar, Bookings | ❌ No | Create bookings (goes to pending) |
 
 ---
 

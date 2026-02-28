@@ -31,6 +31,40 @@ Colab ERP is a Streamlit-based business application handling sensitive booking, 
 - Database connections enforce UTC timezone
 - PostgreSQL listens on VPN interface only
 
+## Role-Based Access Control (RBAC)
+
+### Correct Role Definitions
+
+| Role | ID | Access Level | Primary Function | Pricing Access |
+|------|-----|--------------|------------------|----------------|
+| **Room Boss** | training_facility_admin | Admin (Boss) | Assign rooms to pending bookings | ✅ Yes |
+| **IT Boss** | it_rental_admin | Admin (Boss) | Device assignment queue | ✅ Yes |
+| **Training Facility Admin** | training_facility_admin_viewer | Non-Admin | View calendar/bookings/inventory | ❌ No (view-only) |
+| **Kitchen Staff** | kitchen_staff | Limited | Calendar view ONLY (catering) | ❌ No |
+
+### Role Clarifications
+
+**IMPORTANT:**
+1. **Room Boss = Admin (training_facility_admin)**: Full access, can assign rooms, has pricing access
+2. **IT Boss = IT Rental Admin (it_rental_admin)**: Full access, handles device queue, has pricing access  
+3. **Training Facility Admin**: NON-ADMIN role - can view everything but CANNOT assign/approve like bosses
+4. **Kitchen Staff**: NEW ROLE - Calendar only, sees catering needs and headcounts
+
+### Access Matrix
+
+| Feature | Room Boss | IT Boss | Training Admin | Kitchen Staff |
+|---------|-----------|---------|----------------|---------------|
+| Dashboard | ✅ | ✅ | ❌ | ❌ |
+| Notifications | ✅ | ✅ | ❌ | ❌ |
+| Calendar | ✅ | ✅ | ✅ | ✅ |
+| Bookings | ✅ | ✅ | ✅ (view) | ❌ |
+| Pricing | ✅ | ✅ | ✅ (view) | ❌ |
+| Pending Approvals | ✅ | ✅ | ✅ (view) | ❌ |
+| Inventory | ✅ | ✅ | ✅ | ❌ |
+| Device Assignment | ❌ | ✅ | ❌ | ❌ |
+| Room Assignment | ✅ | ❌ | ❌ | ❌ |
+| Catering View | ✅ | ✅ | ✅ | ✅ (primary) |
+
 ## Secrets Management
 
 ### Required Secrets (secrets.toml)
