@@ -1,0 +1,45 @@
+{
+  "system_version": "1.0",
+  "activation_date": "2026-03-01",
+  "workflow": {
+    "enabled": true,
+    "auto_activate": true,
+    "agents": {
+      "cto_ia": {
+        "enabled": true,
+        "description": "CTO Intake Agent - analyzes all CTO input"
+      },
+      "scrum_master": {
+        "enabled": true,
+        "description": "Scrum Master - plans and coordinates task execution"
+      },
+      "cdo": {
+        "enabled": true,
+        "description": "Chief Documentation Officer - always running"
+      }
+    }
+  },
+  "communication_preferences": {
+    "style": "direct",
+    "technical_depth": "high",
+    "proactive_suggestions": true,
+    "emotional_awareness": true
+  },
+  "quality_requirements": {
+    "mrs_confidence_threshold": 0.9,
+    "first_time_fix_target": 0.8,
+    "documentation_coverage": 1.0,
+    "test_coverage": "comprehensive"
+  },
+  "emotional_tracking": {
+    "enabled": true,
+    "log_all_interactions": true,
+    "analyze_patterns": true,
+    "adjust_behavior": true
+  },
+  "memory_files": {
+    "emotional_log": ".moa_memory/cto_emotional_log.md",
+    "mrs_history": ".moa_memory/mrs_history.jsonl",
+    "agent_performance": ".cline/agent_performance.json"
+  }
+}
