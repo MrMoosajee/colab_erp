@@ -262,9 +262,11 @@ class AvailabilityService:
                 params = [start_dt, end_dt]
 
                 if device_type == 'laptops':
-                    type_filter = "AND dc.name ILIKE '%laptop%'"
+                    # ASUS X515 (id=1) and ASUS VIVO (id=2) are laptops
+                    type_filter = "AND dc.id IN (1, 2)"
                 elif device_type == 'desktops':
-                    type_filter = "AND dc.name ILIKE '%desktop%'"
+                    # Desktop PC (id=3)
+                    type_filter = "AND dc.id = 3"
 
                 query = f"""
                     SELECT COUNT(d.id)
@@ -283,7 +285,8 @@ class AvailabilityService:
                 """
 
                 cur.execute(query, params)
-                available_count = cur.fetchone()[0]
+                result = cur.fetchone()
+                available_count = result[0] if result else 0
 
                 if available_count >= devices_needed:
                     return {
