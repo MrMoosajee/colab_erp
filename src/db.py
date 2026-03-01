@@ -259,6 +259,7 @@ def get_calendar_grid(start_date, end_date):
                 b.lunch_catering,
                 b.stationery_needed,
                 b.devices_needed,
+                b.devices_override,
                 b.status,
                 b.tenant_id,
                 COUNT(bda.device_id) as device_count
@@ -272,7 +273,7 @@ def get_calendar_grid(start_date, end_date):
             GROUP BY r.id, r.name, dr.booking_date, b.id, b.client_name, 
                      b.num_learners, b.num_facilitators, b.headcount,
                      b.coffee_tea_station, b.morning_catering, b.lunch_catering, 
-                     b.stationery_needed, b.devices_needed, b.status, b.tenant_id
+                     b.stationery_needed, b.devices_needed, b.devices_override, b.status, b.tenant_id
         )
         SELECT * FROM expanded_bookings
         ORDER BY room_name, booking_date;

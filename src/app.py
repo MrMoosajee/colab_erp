@@ -315,11 +315,18 @@ def render_week_view(today, rooms_df):
             if not booking.empty and pd.notna(booking.iloc[0]['booking_id']):
                 # Has booking
                 client = booking.iloc[0]['client_name']
+                # Clean up device text from client name for display
+                import re
+                client_clean = re.sub(r'\s*\d+\s*(laptops?|devices?|pcs?)\s*', ' ', client, flags=re.IGNORECASE).strip()
+                client = client_clean if client_clean else client
                 
                 # Get actual learner and facilitator counts
                 learners = int(booking.iloc[0]['num_learners']) if pd.notna(booking.iloc[0].get('num_learners')) else 0
                 facilitators = int(booking.iloc[0]['num_facilitators']) if pd.notna(booking.iloc[0].get('num_facilitators')) else 1
-                devices = int(booking.iloc[0]['devices_needed']) if pd.notna(booking.iloc[0].get('devices_needed')) else 0
+                # Use devices_override for historical data, devices_needed for new
+                devices_needed = int(booking.iloc[0]['devices_needed']) if pd.notna(booking.iloc[0].get('devices_needed')) else 0
+                devices_override = int(booking.iloc[0]['devices_override']) if pd.notna(booking.iloc[0].get('devices_override')) else 0
+                devices = devices_override if devices_override > 0 else devices_needed
                 
                 # Catering indicators
                 coffee = booking.iloc[0].get('coffee_tea_station', False)
@@ -565,11 +572,18 @@ def render_month_view(today, rooms_df):
             if not booking.empty and pd.notna(booking.iloc[0]['booking_id']):
                 # Has booking
                 client = booking.iloc[0]['client_name']
+                # Clean up device text from client name for display
+                import re
+                client_clean = re.sub(r'\s*\d+\s*(laptops?|devices?|pcs?)\s*', ' ', client, flags=re.IGNORECASE).strip()
+                client = client_clean if client_clean else client
                 
                 # Get actual learner and facilitator counts
                 learners = int(booking.iloc[0]['num_learners']) if pd.notna(booking.iloc[0].get('num_learners')) else 0
                 facilitators = int(booking.iloc[0]['num_facilitators']) if pd.notna(booking.iloc[0].get('num_facilitators')) else 1
-                devices = int(booking.iloc[0]['devices_needed']) if pd.notna(booking.iloc[0].get('devices_needed')) else 0
+                # Use devices_override for historical data, devices_needed for new
+                devices_needed = int(booking.iloc[0]['devices_needed']) if pd.notna(booking.iloc[0].get('devices_needed')) else 0
+                devices_override = int(booking.iloc[0]['devices_override']) if pd.notna(booking.iloc[0].get('devices_override')) else 0
+                devices = devices_override if devices_override > 0 else devices_needed
                 
                 # Catering indicators
                 coffee = booking.iloc[0].get('coffee_tea_station', False)
