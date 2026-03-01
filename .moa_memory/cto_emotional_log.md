@@ -87,3 +87,17 @@
 
 *Logged by: CTO-IA Agent*
 *Last Updated: 2026-03-01 13:30*
+
+#### 2026-03-01 ~14:54 - TRIAL RUN BUG DETECTED
+- **State**: Testing/Reporting Issue
+- **Trigger**: First trial of CTO workflow system
+- **Issue**: "list index out of range" when selecting device type
+- **CTO-IA Action**: Detected bug, analyzed root cause
+- **Scrum Master Action**: Coordinated fix
+- **Resolution**: Fixed in 3 minutes
+- **Root Cause**: Device category filter using name instead of ID
+- **Fix**: Updated to use category IDs (1,2 for laptops, 3 for desktops)
+- **Git**: 3c40fea
+- **Result**: ✅ Bug fixed, system working
+
+**CTO Response**: Bug reported clearly, system responded quickly
