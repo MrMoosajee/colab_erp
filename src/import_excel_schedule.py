@@ -56,12 +56,13 @@ def parse_booking_entry(entry, room_id):
     Parse a booking entry from Excel cell with CORRECT logic.
     
     Patterns handled:
-    - "Client 20" → 20 learners, 1 facilitator, 0 devices
-    - "Client 7+1" → 7 learners, 1 facilitator, 0 devices  
-    - "Client 25 laptops" → 25 learners, 1 facilitator, 25 devices
-    - "Client 17 own laptops" → 17 learners, 1 facilitator, 0 devices (CLIENT OWNS)
-    - "Client 25-30 - 15 laptops" → 25 learners, 1 facilitator, 15 devices
-    - "Client 30 + 18 devices" → 30 learners, 1 facilitator, 18 devices
+    - "Client 20" → 20 learners, 1 facilitator (20+1=21), 0 devices
+    - "Client 7+1" → 7 learners, 1 facilitator (7+1=8), 0 devices  
+    - "Client 25 laptops" → 25 learners, 1 facilitator (25+1=26), 25 devices
+    - "Client 17 own laptops" → 17 learners, 1 facilitator (17+1=18), 0 devices (CLIENT OWNS)
+    - "Client 25-30 - 15 laptops" → 25 learners, 1 facilitator (25+1=26), 15 devices
+    - "Client 30 + 18 devices" → 30 learners, 1 facilitator (30+1=31), 18 devices
+    - "Client" (no numbers) → 1 learner, 1 facilitator (1+1=2), 0 devices
     """
     if pd.isna(entry) or not str(entry).strip():
         return None
@@ -91,74 +92,83 @@ def parse_booking_entry(entry, room_id):
         'stationery_needed': False,
     }
 
+    # Check for "own laptops/devices" - client brings their own
     has_own_devices = 'own' in entry.lower() and ('laptop' in entry.lower() or 'device' in entry.lower())
 
-    # Pattern 1: "X + Y devices/laptops" (learners + separate devices)
-    separate_devices = re.search(r'(\d+)\s*\+\s*(\d+)\s*(?:laptops?|devices?)', entry, re.IGNORECASE)
-    if separate_devices:
+    # Extract ALL numbers from the entry for analysis
+    all_numbers = re.findall(r'\d+', entry)
+    
+    # Pattern 1: "X+Y" explicit facilitator format (e.g., "7+1", "20+1", "2+1")
+    # This is the ONLY pattern where we use explicit facilitator count
+    plus_match = re.search(r'(\d+)\s*\+\s*(\d+)(?!\s*(?:laptops?|desktops?|devices?))', entry, re.IGNORECASE)
+    if plus_match:
+        booking['num_learners'] = int(plus_match.group(1))
+        booking['num_facilitators'] = int(plus_match.group(2))
+    
+    # Pattern 2: "X + Y devices/laptops" (learners + separate devices)
+    # Example: "30 + 18 devices" → 30 learners, 18 devices
+    elif re.search(r'(\d+)\s*\+\s*(\d+)\s*(?:laptops?|devices?)', entry, re.IGNORECASE):
+        separate_devices = re.search(r'(\d+)\s*\+\s*(\d+)\s*(?:laptops?|devices?)', entry, re.IGNORECASE)
         booking['num_learners'] = int(separate_devices.group(1))
-        booking['num_facilitators'] = 1
         if not has_own_devices:
             booking['devices_needed'] = int(separate_devices.group(2))
-    else:
-        # Pattern 2: "X+Y" facilitator format (e.g., "7+1", "20+1")
-        plus_match = re.search(r'(\d+)\s*\+\s*(\d+)', entry)
-        if plus_match:
-            booking['num_learners'] = int(plus_match.group(1))
-            booking['num_facilitators'] = int(plus_match.group(2))
-
-    # Pattern 3: Range format "X-Y" (e.g., "25-30", "10-15")
-    # Use the first number as learners
-    range_match = re.search(r'(\d+)-(\d+)', entry)
-    if range_match and booking['num_learners'] == 0:
-        booking['num_learners'] = int(range_match.group(1))
-
-    # Pattern 4: Number followed by devices/laptops/desktops
-    device_match = re.search(r'(\d+)\s*(?:laptops?|desktops?|devices?)', entry, re.IGNORECASE)
-    if device_match and not has_own_devices:
-        device_count = int(device_match.group(1))
-        # Only set devices if different from learners (avoid double counting)
-        if device_count != booking['num_learners'] or booking['num_learners'] == 0:
-            booking['devices_needed'] = device_count
-        # If learners not set, use device count
-        if booking['num_learners'] == 0:
-            booking['num_learners'] = device_count
-
-    # Pattern 5: Simple number at end (only if nothing else matched)
-    if booking['num_learners'] == 0:
-        number_match = re.search(r'(\d+)$', entry)
-        if number_match:
-            booking['num_learners'] = int(number_match.group(1))
-
-    # Pattern 6: "X own laptops/devices" → X learners, 0 devices
-    if has_own_devices:
+    
+    # Pattern 3: "X own laptops/devices" → X learners, 0 devices
+    elif has_own_devices:
         own_match = re.search(r'(\d+)\s*own\s*(?:laptops?|devices?)', entry, re.IGNORECASE)
         if own_match:
             booking['num_learners'] = int(own_match.group(1))
-            booking['devices_needed'] = 0
+            booking['devices_needed'] = 0  # Client owns devices
+    
+    # Pattern 4: Range format "X-Y" (e.g., "25-30", "10-15")
+    # Use the first number as learners
+    elif re.search(r'(\d+)-(\d+)', entry):
+        range_match = re.search(r'(\d+)-(\d+)', entry)
+        booking['num_learners'] = int(range_match.group(1))
+    
+    # Pattern 5: Number followed by devices/laptops/desktops (but not "own")
+    # Example: "25 laptops" → 25 learners, 25 devices
+    elif re.search(r'(\d+)\s*(?:laptops?|desktops?|devices?)', entry, re.IGNORECASE) and not has_own_devices:
+        device_match = re.search(r'(\d+)\s*(?:laptops?|desktops?|devices?)', entry, re.IGNORECASE)
+        device_count = int(device_match.group(1))
+        booking['num_learners'] = device_count
+        booking['devices_needed'] = device_count
+    
+    # Pattern 6: Simple number anywhere in the string
+    # Example: "Zimele ms project 21" → 21 learners
+    elif all_numbers:
+        # Use the largest number as it's likely the total learners
+        booking['num_learners'] = max(int(n) for n in all_numbers)
+    
+    # Pattern 7: No numbers found - default to 1 learner
+    else:
+        booking['num_learners'] = 1
 
-    # Default if still no learner count
+    # CRITICAL FIX: If no explicit "+Y" facilitator pattern was found,
+    # we assume learners + 1 facilitator (not just 1)
+    # This handles cases like "Client 21" → 21 learners + 1 facilitator = 22 total
+    if not plus_match:
+        booking['num_facilitators'] = 1  # Add 1 facilitator to whatever learners we found
+
+    # Default if still no learner count (safety net)
     if booking['num_learners'] == 0:
-        try:
-            room = db.run_query("SELECT max_capacity FROM rooms WHERE id = %s", (room_id,))
-            if not room.empty:
-                booking['num_learners'] = min(20, room.iloc[0]['max_capacity'])
-        except:
-            booking['num_learners'] = 10
+        booking['num_learners'] = 1  # Default to 1 learner
 
-    # Clean up client name
+    # Clean up client name - remove numbers and device references
     client_clean = entry
-    client_clean = re.sub(r'\s*\([^)]*\)\s*', ' ', client_clean)
+    client_clean = re.sub(r'\s*\([^)]*\)\s*', ' ', client_clean)  # Remove parentheses
     client_clean = re.sub(r'\d+\s*-\s*\d+', ' ', client_clean)  # Remove ranges like "25-30"
     client_clean = re.sub(r'\d+\s*own\s*(?:laptops?|devices?)', ' ', client_clean, flags=re.IGNORECASE)
     client_clean = re.sub(r'\d+\s*(?:laptops?|desktops?|devices?)', ' ', client_clean, flags=re.IGNORECASE)
-    client_clean = re.sub(r'\s*\+\s*\d+', ' ', client_clean)
-    client_clean = re.sub(r'\s+\d+\s*$', ' ', client_clean)
-    client_clean = re.sub(r'\s+', ' ', client_clean).strip()
-    client_clean = re.sub(r'[-_]+$', '', client_clean).strip()
+    client_clean = re.sub(r'\s*\+\s*\d+', ' ', client_clean)  # Remove "+ Y" patterns
+    client_clean = re.sub(r'\s+\d+\s*$', ' ', client_clean)  # Remove trailing numbers
+    client_clean = re.sub(r'\b\d+\b', ' ', client_clean)  # Remove any remaining standalone numbers
+    client_clean = re.sub(r'\s+', ' ', client_clean).strip()  # Normalize whitespace
+    client_clean = re.sub(r'[-_]+$', '', client_clean).strip()  # Remove trailing dashes/underscores
     
     booking['client_name'] = client_clean if client_clean else entry
 
+    # Ensure minimum 1 facilitator
     if booking['num_facilitators'] < 1:
         booking['num_facilitators'] = 1
 

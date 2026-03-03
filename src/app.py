@@ -357,25 +357,21 @@ def render_week_view(today, rooms_df):
                 # Build cell text with larger, more readable format
                 total_headcount = learners + facilitators
                 
-                # Long-term offices: show client name only (no headcount)
-                if room_name in ['A302', 'A303', 'Vision']:
-                    cell_text = f"<b style='font-size:12px;'>{client}</b>"
-                    if kitchen_items:
-                        cell_text += f"<br/><span style='font-size:11px;'>{' | '.join(kitchen_items)}</span>"
-                    if stationery_items:
-                        cell_text += f"<br/><span style='font-size:11px;'>{' | '.join(stationery_items)}</span>"
-                    if device_items:
-                        cell_text += f"<br/><span style='font-size:11px;'>{' | '.join(device_items)}</span>"
+                # ALL rooms: show client name, headcount, AND devices
+                cell_text = f"<b style='font-size:12px;'>{client}</b>"
+                cell_text += f"<br/><span style='font-size:13px;font-weight:bold;color:#1f77b4;'>👥 {learners}+{facilitators}={total_headcount}</span>"
+                
+                # ALWAYS show devices section (even if 0) for consistency
+                if devices > 0:
+                    cell_text += f"<br/><span style='font-size:12px;font-weight:bold;color:#d62728;'>💻 Devices: {devices}</span>"
                 else:
-                    # Normal rooms with headcount
-                    cell_text = f"<b style='font-size:12px;'>{client}</b>"
-                    cell_text += f"<br/><span style='font-size:13px;font-weight:bold;color:#1f77b4;'>👥 {learners}+{facilitators}={total_headcount}</span>"
-                    if kitchen_items:
-                        cell_text += f"<br/><span style='font-size:11px;color:#ff7f0e;'>🍽️ {' | '.join(kitchen_items)}</span>"
-                    if stationery_items:
-                        cell_text += f"<br/><span style='font-size:11px;color:#2ca02c;'>✏️ {' | '.join(stationery_items)}</span>"
-                    if device_items:
-                        cell_text += f"<br/><span style='font-size:11px;color:#d62728;'>💻 {devices}</span>"
+                    cell_text += f"<br/><span style='font-size:11px;color:#888;'>💻 No devices</span>"
+                
+                # Add catering and stationery
+                if kitchen_items:
+                    cell_text += f"<br/><span style='font-size:11px;color:#ff7f0e;'>🍽️ {' | '.join(kitchen_items)}</span>"
+                if stationery_items:
+                    cell_text += f"<br/><span style='font-size:11px;color:#2ca02c;'>✏️ {' | '.join(stationery_items)}</span>"
                 
                 # Cell styling
                 if is_today:
@@ -614,25 +610,21 @@ def render_month_view(today, rooms_df):
                 # Build cell text with larger, more readable format
                 total_headcount = learners + facilitators
                 
-                # Long-term offices: show client name only (no headcount)
-                if room_name in ['A302', 'A303', 'Vision']:
-                    cell_text = f"<b style='font-size:12px;'>{client}</b>"
-                    if kitchen_items:
-                        cell_text += f"<br/><span style='font-size:11px;'>{' | '.join(kitchen_items)}</span>"
-                    if stationery_items:
-                        cell_text += f"<br/><span style='font-size:11px;'>{' | '.join(stationery_items)}</span>"
-                    if device_items:
-                        cell_text += f"<br/><span style='font-size:11px;'>{' | '.join(device_items)}</span>"
+                # ALL rooms: show client name, headcount, AND devices
+                cell_text = f"<b style='font-size:12px;'>{client}</b>"
+                cell_text += f"<br/><span style='font-size:13px;font-weight:bold;color:#1f77b4;'>👥 {learners}+{facilitators}={total_headcount}</span>"
+                
+                # ALWAYS show devices section (even if 0) for consistency
+                if devices > 0:
+                    cell_text += f"<br/><span style='font-size:12px;font-weight:bold;color:#d62728;'>💻 Devices: {devices}</span>"
                 else:
-                    # Normal rooms with headcount
-                    cell_text = f"<b style='font-size:12px;'>{client}</b>"
-                    cell_text += f"<br/><span style='font-size:13px;font-weight:bold;color:#1f77b4;'>👥 {learners}+{facilitators}={total_headcount}</span>"
-                    if kitchen_items:
-                        cell_text += f"<br/><span style='font-size:11px;color:#ff7f0e;'>🍽️ {' | '.join(kitchen_items)}</span>"
-                    if stationery_items:
-                        cell_text += f"<br/><span style='font-size:11px;color:#2ca02c;'>✏️ {' | '.join(stationery_items)}</span>"
-                    if device_items:
-                        cell_text += f"<br/><span style='font-size:11px;color:#d62728;'>💻 {devices}</span>"
+                    cell_text += f"<br/><span style='font-size:11px;color:#888;'>💻 No devices</span>"
+                
+                # Add catering and stationery
+                if kitchen_items:
+                    cell_text += f"<br/><span style='font-size:11px;color:#ff7f0e;'>🍽️ {' | '.join(kitchen_items)}</span>"
+                if stationery_items:
+                    cell_text += f"<br/><span style='font-size:11px;color:#2ca02c;'>✏️ {' | '.join(stationery_items)}</span>"
                 
                 # Cell styling (same as week view)
                 if is_today:
