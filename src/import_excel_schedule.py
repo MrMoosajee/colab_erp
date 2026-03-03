@@ -120,13 +120,21 @@ def parse_booking_entry(entry, room_id):
             booking['num_learners'] = int(own_match.group(1))
             booking['devices_needed'] = 0  # Client owns devices
     
-    # Pattern 4: Range format "X-Y" (e.g., "25-30", "10-15")
-    # Use the first number as learners
-    elif re.search(r'(\d+)-(\d+)', entry):
+    # Pattern 4: "- X laptops" or "- X devices" format (dash before number)
+    # Example: "Zimele ms project - 21 laptops" → 21 learners, 21 devices
+    elif re.search(r'[-–]\s*(\d+)\s*(?:laptops?|desktops?|devices?)', entry, re.IGNORECASE) and not has_own_devices:
+        dash_device_match = re.search(r'[-–]\s*(\d+)\s*(?:laptops?|desktops?|devices?)', entry, re.IGNORECASE)
+        device_count = int(dash_device_match.group(1))
+        booking['num_learners'] = device_count
+        booking['devices_needed'] = device_count
+    
+    # Pattern 5: Range format "X-Y" (e.g., "25-30", "10-15")
+    # Use the first number as learners (but NOT when followed by laptops/devices)
+    elif re.search(r'(\d+)-(\d+)(?!\s*(?:laptops?|desktops?|devices?))', entry, re.IGNORECASE):
         range_match = re.search(r'(\d+)-(\d+)', entry)
         booking['num_learners'] = int(range_match.group(1))
     
-    # Pattern 5: Number followed by devices/laptops/desktops (but not "own")
+    # Pattern 6: Number followed by devices/laptops/desktops (but not "own")
     # Example: "25 laptops" → 25 learners, 25 devices
     elif re.search(r'(\d+)\s*(?:laptops?|desktops?|devices?)', entry, re.IGNORECASE) and not has_own_devices:
         device_match = re.search(r'(\d+)\s*(?:laptops?|desktops?|devices?)', entry, re.IGNORECASE)
